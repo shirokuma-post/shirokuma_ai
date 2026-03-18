@@ -162,7 +162,7 @@ export default function PricingPage() {
                       )}
                     </div>
                   ) : isDowngrade ? (
-                    currentPlan !== "free" ? (
+                    (currentPlan as string) !== "free" ? (
                       <button
                         onClick={handleManage}
                         disabled={loading === "manage"}

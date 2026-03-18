@@ -22,10 +22,10 @@ export function buildLearningContext(learningPosts: any[]): string {
 
   return `
 ■ 学習データ（過去に伸びた投稿の分析結果）:
-- よく使われる構造: ${[...new Set(structures)].join("、")}
-- 効果的なフック: ${[...new Set(hookTypes)].join("、")}
-- 勝ちパターンのトーン: ${[...new Set(tones)].join("、")}
-- 効いてるテクニック: ${[...new Set(techniques)].join("、")}
+- よく使われる構造: ${Array.from(new Set(structures)).join("、")}
+- 効果的なフック: ${Array.from(new Set(hookTypes)).join("、")}
+- 勝ちパターンのトーン: ${Array.from(new Set(tones)).join("、")}
+- 効いてるテクニック: ${Array.from(new Set(techniques)).join("、")}
 
 ■ 伸びた投稿の実例（これらのスタイルを参考に）:
 ${examples}
