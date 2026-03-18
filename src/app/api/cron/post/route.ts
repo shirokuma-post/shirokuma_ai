@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildPrompt, buildSplitPrompt, parseSplitPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS } from "@/lib/ai/generate-post";
+import { decrypt } from "@/lib/crypto";
 
 // Service client (bypasses RLS)
 function getServiceClient() {
@@ -128,13 +129,13 @@ async function processSchedule(supabase: any, config: any, matchedTime: string) 
 
   switch (provider) {
     case "anthropic":
-      rawContent = await generateWithAnthropic(aiKey.encrypted_value, system, user, undefined, maxTokens);
+      rawContent = await generateWithAnthropic(decrypt(aiKey.encrypted_value), system, user, undefined, maxTokens);
       break;
     case "openai":
-      rawContent = await generateWithOpenAI(aiKey.encrypted_value, system, user, undefined, maxTokens);
+      rawContent = await generateWithOpenAI(decrypt(aiKey.encrypted_value), system, user, undefined, maxTokens);
       break;
     case "google":
-      rawContent = await generateWithGoogle(aiKey.encrypted_value, system, user, undefined, maxTokens);
+      rawContent = await generateWithGoogle(decrypt(aiKey.encrypted_value), system, user, undefined, maxTokens);
       break;
     default:
       throw new Error("Unknown AI provider: " + provider);
@@ -166,7 +167,7 @@ async function processSchedule(supabase: any, config: any, matchedTime: string) 
         if (!xKeys?.length) { snsResults.x = { error: "No X API keys" }; continue; }
 
         const keyMap: Record<string, string> = {};
-        for (const k of xKeys) { keyMap[k.key_name] = k.encrypted_value; }
+        for (const k of xKeys) { keyMap[k.key_name] = decrypt(k.encrypted_value); }
 
         const creds = {
           consumerKey: keyMap["consumer_key"] || keyMap["consumerKey"],

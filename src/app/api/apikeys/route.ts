@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { encrypt } from "@/lib/crypto";
 
 // APIキー一覧取得
 export async function GET() {
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
         user_id: user.id,
         provider,
         key_name,
-        encrypted_value: value,
+        encrypted_value: encrypt(value),
         metadata,
         is_valid: true,
         last_verified_at: new Date().toISOString(),
