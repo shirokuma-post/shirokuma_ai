@@ -78,6 +78,7 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider: selectedAi, key_name: "api_key", value: aiKey }),
       });
+      if (!res.ok) { alert("AIキーの保存に失敗しました: " + (await res.json()).error); setSavingAi(false); return; }
       if (res.ok) {
         setSavedAi(true);
         setSavedKeys(prev => [...prev.filter(k => !k.startsWith(selectedAi)), selectedAi + ":api_key"]);
@@ -97,15 +98,18 @@ export default function SettingsPage() {
         { key_name: "access_token", value: xKeys.accessToken },
         { key_name: "access_token_secret", value: xKeys.accessTokenSecret },
       ];
+      let allOk = true;
       for (const k of keys) {
         if (k.value.trim()) {
-          await fetch("/api/apikeys", {
+          const res = await fetch("/api/apikeys", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ provider: "x", key_name: k.key_name, value: k.value }),
           });
+          if (!res.ok) { allOk = false; console.error("X key save failed:", k.key_name, await res.text()); }
         }
       }
+      if (!allOk) { alert("X APIキーの保存に失敗しました。設定を確認してください。"); setSavingX(false); return; }
       setSavedX(true);
       setSavedKeys(prev => [...prev.filter(k => !k.startsWith("x:")), "x:consumer_key", "x:consumer_secret", "x:access_token", "x:access_token_secret"]);
       setXKeys({ consumerKey: "", consumerSecret: "", accessToken: "", accessTokenSecret: "" });
@@ -121,15 +125,18 @@ export default function SettingsPage() {
         { key_name: "access_token", value: threadsKeys.accessToken },
         { key_name: "user_id", value: threadsKeys.userId },
       ];
+      let allOkT = true;
       for (const k of keys) {
         if (k.value.trim()) {
-          await fetch("/api/apikeys", {
+          const res = await fetch("/api/apikeys", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ provider: "threads", key_name: k.key_name, value: k.value }),
           });
+          if (!res.ok) { allOkT = false; console.error("Threads key save failed:", k.key_name, await res.text()); }
         }
       }
+      if (!allOkT) { alert("Threads APIキーの保存に失敗しました。設定を確認してください。"); setSavingThreads(false); return; }
       setSavedThreads(true);
       setSavedKeys(prev => [...prev.filter(k => !k.startsWith("threads:")), "threads:access_token", "threads:user_id"]);
       setThreadsKeys({ accessToken: "", userId: "" });
