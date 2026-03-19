@@ -124,6 +124,8 @@ async function postXThread(creds: any, hookText: string, replyText: string) {
   if (!hookRes.ok) { const e = await hookRes.text(); return NextResponse.json({ error: `X hook error: ${hookRes.status} - ${e}` }, { status: hookRes.status }); }
   const hookData = await hookRes.json();
   const hookId = hookData.data.id;
+  // X API needs time to process the first tweet before accepting a reply
+  await new Promise((r) => setTimeout(r, 3000));
   const replyRes = await fetch(url, { method: "POST", headers: { Authorization: buildOAuthHeader("POST", url, creds), "Content-Type": "application/json" }, body: JSON.stringify({ text: replyText, reply: { in_reply_to_tweet_id: hookId } }) });
   if (!replyRes.ok) { const e = await replyRes.text(); return NextResponse.json({ error: `X reply error: ${replyRes.status} - ${e}`, hookId, partial: true }, { status: replyRes.status }); }
   const replyData = await replyRes.json();
