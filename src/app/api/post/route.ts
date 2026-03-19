@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     // 外部から credentials が渡された場合はそのまま使う（cron からの呼び出し用）
     // そうでなければ認証ユーザーのキーをDBから取得
     let credentials = externalCreds;
+    let authUserId: string | null = null;
 
     if (!credentials) {
       const supabase = createServerSupabase();
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
       if (!authUser) {
         return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
       }
+      authUserId = authUser.id;
 
       if (provider === "x") {
         const { data: xKeys } = await supabase
@@ -79,15 +81,34 @@ export async function POST(request: Request) {
     }
 
     // 投稿実行
+    let result: Response;
     if (provider === "x") {
-      if (splitReply) return await postXThread(credentials, text, splitReply);
-      return await postToX(credentials, text);
+      result = splitReply ? await postXThread(credentials, text, splitReply) : await postToX(credentials, text);
     } else if (provider === "threads") {
-      if (splitReply) return await postThreadsThread(credentials, text, splitReply);
-      return await postToThreads(credentials, text);
+      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text);
+    } else {
+      return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
 
-    return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+    // DB保存（認証ユーザーの手動投稿のみ。cron は自前で保存する）
+    if (authUserId) {
+      try {
+        const resultData = await result.clone().json();
+        const isSuccess = result.ok;
+        const supabase = createServerSupabase();
+        await supabase.from("posts").insert({
+          user_id: authUserId,
+          content: splitReply ? text + "\n\n---\n\n" + splitReply : text,
+          status: isSuccess ? "posted" : "failed",
+          posted_at: isSuccess ? new Date().toISOString() : null,
+          sns_post_ids: { [provider]: resultData },
+        });
+      } catch (dbErr) {
+        console.warn("Post DB save failed (non-fatal):", dbErr);
+      }
+    }
+
+    return result;
   } catch (error: any) {
     console.error("Post error:", error);
     return NextResponse.json({ error: error.message || "投稿に失敗しました" }, { status: 500 });

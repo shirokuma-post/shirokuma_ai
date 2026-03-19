@@ -159,7 +159,24 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
     // Non-fatal
   }
 
-  // 6. Generate & post per SNS target (separately for different platforms)
+  // 6. Get recent posts for dedup
+  let recentPostsContext = "";
+  try {
+    const { data: recentPosts } = await supabase
+      .from("posts")
+      .select("content")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (recentPosts?.length) {
+      const summaries = recentPosts.map((p: any, i: number) => `${i + 1}. ${p.content.slice(0, 80)}`).join("\n");
+      recentPostsContext = `\n\n■ 過去の投稿（重複回避用）:\n以下と同じ内容・同じ切り口・同じ表現は絶対に避けてください。新しい視点で書いてください。\n${summaries}`;
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // 7. Generate & post per SNS target (separately for different platforms)
   const targets: ("x" | "threads")[] =
     slot.target === "both" ? ["x", "threads"] : [slot.target];
 
@@ -174,7 +191,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
       ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
       : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget });
 
-    const systemWithLearning = learningContext ? system + "\n\n" + learningContext : system;
+    const systemWithLearning = system + (learningContext ? "\n\n" + learningContext : "") + recentPostsContext;
     const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
 
     let rawContent: string;
