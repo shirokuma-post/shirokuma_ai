@@ -9,7 +9,7 @@ type UserPlan = "free" | "pro" | "business";
 
 interface Slot {
   time: string;
-  target: "x" | "threads" | "both";
+  target: "x" | "threads";
   style: string;
   character: string;
   length: string;
@@ -50,7 +50,6 @@ const LENGTHS = [
 const TARGETS = [
   { id: "x" as const, label: "X" },
   { id: "threads" as const, label: "Threads" },
-  { id: "both" as const, label: "X + Threads" },
 ];
 
 const DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
@@ -88,7 +87,7 @@ export default function SchedulePage() {
             // 旧形式→新形式に変換
             const oldTimes = data.config.times as string[];
             const oldTarget = (data.config.sns_targets || ["x"]) as string[];
-            const target = oldTarget.includes("x") && oldTarget.includes("threads") ? "both" : oldTarget.includes("threads") ? "threads" : "x";
+            const target = oldTarget.includes("threads") ? "threads" : "x";
             setSlots(oldTimes.map((t: string) => ({
               time: t,
               target: target as Slot["target"],
@@ -207,7 +206,7 @@ export default function SchedulePage() {
                             const needsBusiness = t.id !== "x" && !canUseThreads;
                             return (
                               <button key={t.id}
-                                onClick={() => needsBusiness ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id })}
+                                onClick={() => needsBusiness ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id, ...(t.id === "x" ? { split: false } : {}) })}
                                 className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
                                   (slot.target === t.id ? "border-brand-500 bg-brand-50 text-brand-700" :
                                     needsBusiness ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
@@ -262,13 +261,17 @@ export default function SchedulePage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">分割投稿</label>
-                          <button
-                            onClick={() => canUseSplit ? updateSlot(i, { split: !slot.split }) : (window.location.href = "/pricing")}
-                            className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
-                              (slot.split ? "border-purple-500 bg-purple-50 text-purple-700" :
-                                !canUseSplit ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
-                                  "border-gray-200 text-gray-600 hover:border-gray-300")}
-                          >{slot.split ? "✓ " : ""}フック→リプ{!canUseSplit && " 🔒"}</button>
+                          {slot.target === "x" ? (
+                            <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">X API制限により不可</span>
+                          ) : (
+                            <button
+                              onClick={() => canUseSplit ? updateSlot(i, { split: !slot.split }) : (window.location.href = "/pricing")}
+                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                                (slot.split ? "border-purple-500 bg-purple-50 text-purple-700" :
+                                  !canUseSplit ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
+                                    "border-gray-200 text-gray-600 hover:border-gray-300")}
+                            >{slot.split ? "✓ " : ""}フック→リプ{!canUseSplit && " 🔒"}</button>
+                          )}
                         </div>
                       </div>
 

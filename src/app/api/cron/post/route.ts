@@ -18,7 +18,7 @@ import { decrypt } from "@/lib/crypto";
 // ---------- Types ----------
 interface ScheduleSlot {
   time: string;
-  target: "x" | "threads" | "both";
+  target: "x" | "threads";
   style: string;
   character: string;
   length: string;
@@ -177,8 +177,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
   }
 
   // 7. Generate & post per SNS target (separately for different platforms)
-  const targets: ("x" | "threads")[] =
-    slot.target === "both" ? ["x", "threads"] : [slot.target];
+  const targets: ("x" | "threads")[] = [slot.target];
 
   const snsResults: Record<string, any> = {};
   let savedContent = "";
