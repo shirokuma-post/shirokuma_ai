@@ -1,11 +1,84 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { createServerSupabase } from "@/lib/supabase/server";
+import { decrypt } from "@/lib/crypto";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { provider, credentials, text, splitReply } = body;
+    const { provider, text, splitReply, credentials: externalCreds } = body;
 
+    if (!text) {
+      return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
+    }
+
+    // 外部から credentials が渡された場合はそのまま使う（cron からの呼び出し用）
+    // そうでなければ認証ユーザーのキーをDBから取得
+    let credentials = externalCreds;
+
+    if (!credentials) {
+      const supabase = createServerSupabase();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
+      }
+
+      if (provider === "x") {
+        const { data: xKeys } = await supabase
+          .from("api_keys")
+          .select("*")
+          .eq("user_id", authUser.id)
+          .eq("provider", "x");
+
+        if (!xKeys?.length) {
+          return NextResponse.json({ error: "X APIキーが設定されていません。設定ページから登録してください。" }, { status: 400 });
+        }
+
+        const keyMap: Record<string, string> = {};
+        for (const k of xKeys) {
+          keyMap[k.key_name] = decrypt(k.encrypted_value);
+        }
+
+        credentials = {
+          consumerKey: keyMap["consumer_key"] || keyMap["consumerKey"],
+          consumerSecret: keyMap["consumer_secret"] || keyMap["consumerSecret"],
+          accessToken: keyMap["access_token"] || keyMap["accessToken"],
+          accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
+        };
+
+        if (!credentials.consumerKey) {
+          return NextResponse.json({ error: "X APIキーが不完全です。4つのキーをすべて設定してください。" }, { status: 400 });
+        }
+      } else if (provider === "threads") {
+        const { data: threadsKeys } = await supabase
+          .from("api_keys")
+          .select("*")
+          .eq("user_id", authUser.id)
+          .eq("provider", "threads");
+
+        if (!threadsKeys?.length) {
+          return NextResponse.json({ error: "Threads APIキーが設定されていません。設定ページから登録してください。" }, { status: 400 });
+        }
+
+        const keyMap: Record<string, string> = {};
+        for (const k of threadsKeys) {
+          keyMap[k.key_name] = decrypt(k.encrypted_value);
+        }
+
+        credentials = {
+          accessToken: keyMap["access_token"] || keyMap["accessToken"],
+          userId: keyMap["user_id"] || keyMap["userId"],
+        };
+
+        if (!credentials.accessToken || !credentials.userId) {
+          return NextResponse.json({ error: "Threads APIキーが不完全です。アクセストークンとユーザーIDを設定してください。" }, { status: 400 });
+        }
+      } else {
+        return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+      }
+    }
+
+    // 投稿実行
     if (provider === "x") {
       if (splitReply) return await postXThread(credentials, text, splitReply);
       return await postToX(credentials, text);
@@ -13,13 +86,15 @@ export async function POST(request: Request) {
       if (splitReply) return await postThreadsThread(credentials, text, splitReply);
       return await postToThreads(credentials, text);
     }
+
     return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
   } catch (error: any) {
     console.error("Post error:", error);
-    return NextResponse.json({ error: error.message || "Post failed" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "投稿に失敗しました" }, { status: 500 });
   }
 }
 
+// ---------- X posting ----------
 function generateOAuthSignature(method: string, url: string, params: Record<string, string>, consumerSecret: string, tokenSecret: string): string {
   const sortedParams = Object.keys(params).sort().map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join("&");
   const baseString = [method.toUpperCase(), encodeURIComponent(url), encodeURIComponent(sortedParams)].join("&");
@@ -38,53 +113,50 @@ function buildOAuthHeader(method: string, url: string, creds: { consumerKey: str
 async function postToX(creds: any, text: string) {
   const url = "https://api.twitter.com/2/tweets";
   const res = await fetch(url, { method: "POST", headers: { Authorization: buildOAuthHeader("POST", url, creds), "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-  if (!res.ok) { const e = await res.text(); return NextResponse.json({ message: `X API error: ${res.status} - ${e}` }, { status: res.status }); }
+  if (!res.ok) { const e = await res.text(); return NextResponse.json({ error: `X API error: ${res.status} - ${e}` }, { status: res.status }); }
   const data = await res.json();
   return NextResponse.json({ id: data.data.id, text: data.data.text });
 }
 
 async function postXThread(creds: any, hookText: string, replyText: string) {
   const url = "https://api.twitter.com/2/tweets";
-  // Post hook
   const hookRes = await fetch(url, { method: "POST", headers: { Authorization: buildOAuthHeader("POST", url, creds), "Content-Type": "application/json" }, body: JSON.stringify({ text: hookText }) });
-  if (!hookRes.ok) { const e = await hookRes.text(); return NextResponse.json({ message: `X hook error: ${hookRes.status} - ${e}` }, { status: hookRes.status }); }
+  if (!hookRes.ok) { const e = await hookRes.text(); return NextResponse.json({ error: `X hook error: ${hookRes.status} - ${e}` }, { status: hookRes.status }); }
   const hookData = await hookRes.json();
   const hookId = hookData.data.id;
-  // Reply
   const replyRes = await fetch(url, { method: "POST", headers: { Authorization: buildOAuthHeader("POST", url, creds), "Content-Type": "application/json" }, body: JSON.stringify({ text: replyText, reply: { in_reply_to_tweet_id: hookId } }) });
-  if (!replyRes.ok) { const e = await replyRes.text(); return NextResponse.json({ message: `X reply error: ${replyRes.status} - ${e}`, hookId, partial: true }, { status: replyRes.status }); }
+  if (!replyRes.ok) { const e = await replyRes.text(); return NextResponse.json({ error: `X reply error: ${replyRes.status} - ${e}`, hookId, partial: true }, { status: replyRes.status }); }
   const replyData = await replyRes.json();
   return NextResponse.json({ id: hookId, replyId: replyData.data.id, thread: true });
 }
 
+// ---------- Threads posting ----------
 async function postToThreads(creds: { accessToken: string; userId: string }, text: string) {
   const createRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media_type: "TEXT", text, access_token: creds.accessToken }) });
-  if (!createRes.ok) { const e = await createRes.text(); return NextResponse.json({ message: `Threads error: ${e}` }, { status: createRes.status }); }
+  if (!createRes.ok) { const e = await createRes.text(); return NextResponse.json({ error: `Threads error: ${e}` }, { status: createRes.status }); }
   const { id: cid } = await createRes.json();
   await new Promise((r) => setTimeout(r, 2000));
   const pubRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads_publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creation_id: cid, access_token: creds.accessToken }) });
-  if (!pubRes.ok) { const e = await pubRes.text(); return NextResponse.json({ message: `Threads publish error: ${e}` }, { status: pubRes.status }); }
+  if (!pubRes.ok) { const e = await pubRes.text(); return NextResponse.json({ error: `Threads publish error: ${e}` }, { status: pubRes.status }); }
   const data = await pubRes.json();
   return NextResponse.json({ id: data.id });
 }
 
 async function postThreadsThread(creds: { accessToken: string; userId: string }, hookText: string, replyText: string) {
-  // Hook
   const hcRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media_type: "TEXT", text: hookText, access_token: creds.accessToken }) });
-  if (!hcRes.ok) { const e = await hcRes.text(); return NextResponse.json({ message: `Threads hook error: ${e}` }, { status: hcRes.status }); }
+  if (!hcRes.ok) { const e = await hcRes.text(); return NextResponse.json({ error: `Threads hook error: ${e}` }, { status: hcRes.status }); }
   const { id: hcid } = await hcRes.json();
   await new Promise((r) => setTimeout(r, 2000));
   const hpRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads_publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creation_id: hcid, access_token: creds.accessToken }) });
-  if (!hpRes.ok) { const e = await hpRes.text(); return NextResponse.json({ message: `Threads hook publish error: ${e}` }, { status: hpRes.status }); }
+  if (!hpRes.ok) { const e = await hpRes.text(); return NextResponse.json({ error: `Threads hook publish error: ${e}` }, { status: hpRes.status }); }
   const hookData = await hpRes.json();
   const hookId = hookData.id;
-  // Reply
   const rcRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media_type: "TEXT", text: replyText, reply_to_id: hookId, access_token: creds.accessToken }) });
-  if (!rcRes.ok) { const e = await rcRes.text(); return NextResponse.json({ message: `Threads reply error: ${e}`, hookId, partial: true }, { status: rcRes.status }); }
+  if (!rcRes.ok) { const e = await rcRes.text(); return NextResponse.json({ error: `Threads reply error: ${e}`, hookId, partial: true }, { status: rcRes.status }); }
   const { id: rcid } = await rcRes.json();
   await new Promise((r) => setTimeout(r, 2000));
   const rpRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads_publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creation_id: rcid, access_token: creds.accessToken }) });
-  if (!rpRes.ok) { const e = await rpRes.text(); return NextResponse.json({ message: `Threads reply publish error: ${e}`, hookId, partial: true }, { status: rpRes.status }); }
+  if (!rpRes.ok) { const e = await rpRes.text(); return NextResponse.json({ error: `Threads reply publish error: ${e}`, hookId, partial: true }, { status: rpRes.status }); }
   const replyData = await rpRes.json();
   return NextResponse.json({ id: hookId, replyId: replyData.id, thread: true });
 }
