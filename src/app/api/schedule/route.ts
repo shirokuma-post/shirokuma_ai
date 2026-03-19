@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+export interface ScheduleSlot {
+  time: string;       // "09:00"
+  target: "x" | "threads" | "both";
+  style: string;      // "mix" | "paradigm_break" | etc.
+  character: string;  // "none" | "gal" | etc.
+  length: string;     // "short" | "standard" | "long"
+  split: boolean;
+}
+
 export async function GET() {
   try {
     const supabase = createServerSupabase();
@@ -23,20 +32,15 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { enabled, times, timezone, snsTargets, style, postLength, splitMode, character } = body;
+    const { enabled, slots } = body as { enabled: boolean; slots: ScheduleSlot[] };
 
     const { data, error } = await supabase
       .from("schedule_configs")
       .upsert({
         user_id: user.id,
         enabled: enabled ?? false,
-        times: times || ["07:00", "12:30", "21:00"],
-        timezone: timezone || "Asia/Tokyo",
-        sns_targets: snsTargets || ["x"],
-        style: style || "mix",
-        post_length: postLength || "standard",
-        split_mode: splitMode || false,
-        character_type: character || "none",
+        slots: slots || [],
+        timezone: "Asia/Tokyo",
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" })
       .select()

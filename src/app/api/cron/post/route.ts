@@ -1,9 +1,31 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildPrompt, buildSplitPrompt, parseSplitPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS } from "@/lib/ai/generate-post";
+import {
+  buildPrompt,
+  buildSplitPrompt,
+  parseSplitPost,
+  generateWithAnthropic,
+  generateWithOpenAI,
+  generateWithGoogle,
+  LENGTH_CONFIGS,
+  type PostLength,
+  type CharacterType,
+} from "@/lib/ai/generate-post";
+import type { PostStyle } from "@/types/database";
+import { buildLearningContext } from "@/lib/ai/learning-context";
 import { decrypt } from "@/lib/crypto";
 
-// Service client (bypasses RLS)
+// ---------- Types ----------
+interface ScheduleSlot {
+  time: string;
+  target: "x" | "threads" | "both";
+  style: string;
+  character: string;
+  length: string;
+  split: boolean;
+}
+
+// ---------- Service client (bypasses RLS) ----------
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,8 +33,8 @@ function getServiceClient() {
   );
 }
 
+// ---------- Main handler ----------
 export async function GET(request: Request) {
-  // Verify cron secret (Vercel Cron or manual trigger)
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -23,7 +45,10 @@ export async function GET(request: Request) {
     const supabase = getServiceClient();
     const now = new Date();
     const jstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-    const currentTime = jstNow.getHours().toString().padStart(2, "0") + ":" + jstNow.getMinutes().toString().padStart(2, "0");
+    const currentTime =
+      jstNow.getHours().toString().padStart(2, "0") +
+      ":" +
+      jstNow.getMinutes().toString().padStart(2, "0");
     const todayStr = jstNow.toISOString().split("T")[0];
 
     console.log(`[CRON] Running at JST ${currentTime} (${todayStr})`);
@@ -42,41 +67,41 @@ export async function GET(request: Request) {
     let errors = 0;
 
     for (const config of configs) {
-      // Check if any scheduled time matches (within 5 min window)
-      const times = (config.times as string[]) || [];
-      const matchedTime = times.find((t: string) => {
-        const [h, m] = t.split(":").map(Number);
+      const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
+
+      // Find slots matching current time (within 5 min window)
+      const matchedSlots = slots.filter((slot) => {
+        const [h, m] = slot.time.split(":").map(Number);
         const [ch, cm] = currentTime.split(":").map(Number);
-        const diff = Math.abs((h * 60 + m) - (ch * 60 + cm));
-        return diff <= 4; // 5-minute window
+        const diff = Math.abs(h * 60 + m - (ch * 60 + cm));
+        return diff <= 4;
       });
 
-      if (!matchedTime) continue;
+      for (const slot of matchedSlots) {
+        // Skip if already executed for this slot today
+        const { data: existing } = await supabase
+          .from("schedule_executions")
+          .select("id")
+          .eq("user_id", config.user_id)
+          .eq("scheduled_time", slot.time)
+          .gte("created_at", todayStr + "T00:00:00+09:00")
+          .limit(1);
 
-      // Check if already executed for this time today
-      const { data: existing } = await supabase
-        .from("schedule_executions")
-        .select("id")
-        .eq("user_id", config.user_id)
-        .eq("scheduled_time", matchedTime)
-        .gte("created_at", todayStr + "T00:00:00+09:00")
-        .limit(1);
+        if (existing && existing.length > 0) continue;
 
-      if (existing && existing.length > 0) continue;
-
-      // Process this schedule
-      try {
-        await processSchedule(supabase, config, matchedTime);
-        processed++;
-      } catch (err: any) {
-        console.error(`[CRON] Error for user ${config.user_id}:`, err.message);
-        await supabase.from("schedule_executions").insert({
-          user_id: config.user_id,
-          scheduled_time: matchedTime,
-          status: "failed",
-          error_message: err.message,
-        });
-        errors++;
+        try {
+          await processSlot(supabase, config.user_id, slot);
+          processed++;
+        } catch (err: any) {
+          console.error(`[CRON] Error for user ${config.user_id} slot ${slot.time}:`, err.message);
+          await supabase.from("schedule_executions").insert({
+            user_id: config.user_id,
+            scheduled_time: slot.time,
+            status: "failed",
+            error_message: err.message,
+          });
+          errors++;
+        }
       }
     }
 
@@ -87,9 +112,8 @@ export async function GET(request: Request) {
   }
 }
 
-async function processSchedule(supabase: any, config: any, matchedTime: string) {
-  const userId = config.user_id;
-
+// ---------- Process a single slot ----------
+async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
   // 1. Get user's philosophy
   const { data: philosophy } = await supabase
     .from("philosophies")
@@ -110,32 +134,54 @@ async function processSchedule(supabase: any, config: any, matchedTime: string) 
   const aiKey = aiKeys?.[0];
   if (!aiKey) throw new Error("No AI API key configured");
 
-  // 3. Determine time of day
-  const hour = parseInt(matchedTime.split(":")[0]);
+  // 3. Determine time of day from slot time
+  const hour = parseInt(slot.time.split(":")[0]);
   const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
 
-  // 4. Generate post
-  const isSplit = config.split_mode;
-  const postLength = config.post_length || "standard";
+  // 4. Build prompt with slot-specific settings
+  const style = (slot.style || "mix") as PostStyle;
+  const character = (slot.character || "none") as CharacterType;
+  const postLength = (slot.length || "standard") as PostLength;
+  const isSplit = slot.split || false;
 
   const { system, user } = isSplit
-    ? buildSplitPrompt({ philosophy, style: config.style || "mix", timeOfDay })
-    : buildPrompt({ philosophy, style: config.style || "mix", timeOfDay, postLength });
+    ? buildSplitPrompt({ philosophy, style, timeOfDay, character })
+    : buildPrompt({ philosophy, style, timeOfDay, postLength, character });
 
-  const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
+  // 5. Inject learning context
+  let systemWithLearning = system;
+  try {
+    const { data: learningPosts } = await supabase
+      .from("learning_posts")
+      .select("*")
+      .eq("user_id", userId);
+    if (learningPosts?.length) {
+      const learningContext = buildLearningContext(learningPosts);
+      if (learningContext) {
+        systemWithLearning = system + "\n\n" + learningContext;
+      }
+    }
+  } catch {
+    // Non-fatal: continue without learning data
+  }
 
-  let rawContent: string;
+  // 6. Generate content
+  const maxTokens = isSplit
+    ? 800
+    : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
+
   const provider = aiKey.provider;
+  let rawContent: string;
 
   switch (provider) {
     case "anthropic":
-      rawContent = await generateWithAnthropic(decrypt(aiKey.encrypted_value), system, user, undefined, maxTokens);
+      rawContent = await generateWithAnthropic(decrypt(aiKey.encrypted_value), systemWithLearning, user, undefined, maxTokens);
       break;
     case "openai":
-      rawContent = await generateWithOpenAI(decrypt(aiKey.encrypted_value), system, user, undefined, maxTokens);
+      rawContent = await generateWithOpenAI(decrypt(aiKey.encrypted_value), systemWithLearning, user, undefined, maxTokens);
       break;
     case "google":
-      rawContent = await generateWithGoogle(decrypt(aiKey.encrypted_value), system, user, undefined, maxTokens);
+      rawContent = await generateWithGoogle(decrypt(aiKey.encrypted_value), systemWithLearning, user, undefined, maxTokens);
       break;
     default:
       throw new Error("Unknown AI provider: " + provider);
@@ -151,70 +197,139 @@ async function processSchedule(supabase: any, config: any, matchedTime: string) 
     replyText = parsed.reply;
   }
 
-  // 5. Post to SNS
-  const snsTargets = (config.sns_targets as string[]) || ["x"];
+  // 7. Post to target SNS(es)
+  const targets: string[] =
+    slot.target === "both" ? ["x", "threads"] : [slot.target];
+
   const snsResults: Record<string, any> = {};
 
-  for (const target of snsTargets) {
+  for (const target of targets) {
     try {
       if (target === "x") {
-        const { data: xKeys } = await supabase
-          .from("api_keys")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("provider", "x");
-
-        if (!xKeys?.length) { snsResults.x = { error: "No X API keys" }; continue; }
-
-        const keyMap: Record<string, string> = {};
-        for (const k of xKeys) { keyMap[k.key_name] = decrypt(k.encrypted_value); }
-
-        const creds = {
-          consumerKey: keyMap["consumer_key"] || keyMap["consumerKey"],
-          consumerSecret: keyMap["consumer_secret"] || keyMap["consumerSecret"],
-          accessToken: keyMap["access_token"] || keyMap["accessToken"],
-          accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
-        };
-
-        if (!creds.consumerKey) { snsResults.x = { error: "Incomplete X keys" }; continue; }
-
-        // Post via internal API (reuse existing logic)
-        const postRes = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/post`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: "x", credentials: creds, text: hookText, ...(replyText ? { splitReply: replyText } : {}) }),
-        });
-        snsResults.x = await postRes.json();
+        snsResults.x = await postToXViaCron(supabase, userId, hookText, replyText);
+      } else if (target === "threads") {
+        snsResults.threads = await postToThreadsViaCron(supabase, userId, hookText, replyText);
       }
     } catch (err: any) {
       snsResults[target] = { error: err.message };
     }
   }
 
-  // 6. Save post to DB
-  const { data: post } = await supabase.from("posts").insert({
-    user_id: userId,
-    content: replyText ? hookText + "\n\n---\n\n" + replyText : hookText,
-    style_used: config.style || "mix",
-    status: "posted",
-    posted_at: new Date().toISOString(),
-    sns_post_ids: snsResults,
-    ai_model_used: provider,
-  }).select().single();
+  // 8. Save post to DB
+  const { data: post } = await supabase
+    .from("posts")
+    .insert({
+      user_id: userId,
+      content: replyText ? hookText + "\n\n---\n\n" + replyText : hookText,
+      style_used: style,
+      character_used: character,
+      status: "posted",
+      posted_at: new Date().toISOString(),
+      sns_post_ids: snsResults,
+      ai_model_used: provider,
+    })
+    .select()
+    .single();
 
-  // 7. Record execution
+  // 9. Record execution
   await supabase.from("schedule_executions").insert({
     user_id: userId,
-    scheduled_time: matchedTime,
+    scheduled_time: slot.time,
     status: "success",
     post_id: post?.id,
     sns_results: snsResults,
   });
 
-  // 8. Increment daily count
-  await supabase.from("profiles").update({
-    daily_post_count: supabase.rpc ? undefined : 0, // handled by trigger ideally
-  }).eq("id", userId);
+  // 10. Increment daily count
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("daily_post_count")
+    .eq("id", userId)
+    .single();
 
-  console.log(`[CRON] Posted for user ${userId} at ${matchedTime}`);
+  await supabase
+    .from("profiles")
+    .update({ daily_post_count: (profile?.daily_post_count || 0) + 1 })
+    .eq("id", userId);
+
+  console.log(`[CRON] Posted for user ${userId} at ${slot.time} → ${slot.target}`);
+}
+
+// ---------- SNS posting helpers ----------
+async function postToXViaCron(supabase: any, userId: string, hookText: string, replyText: string | null) {
+  const { data: xKeys } = await supabase
+    .from("api_keys")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("provider", "x");
+
+  if (!xKeys?.length) return { error: "No X API keys" };
+
+  const keyMap: Record<string, string> = {};
+  for (const k of xKeys) {
+    keyMap[k.key_name] = decrypt(k.encrypted_value);
+  }
+
+  const creds = {
+    consumerKey: keyMap["consumer_key"] || keyMap["consumerKey"],
+    consumerSecret: keyMap["consumer_secret"] || keyMap["consumerSecret"],
+    accessToken: keyMap["access_token"] || keyMap["accessToken"],
+    accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
+  };
+
+  if (!creds.consumerKey) return { error: "Incomplete X keys" };
+
+  const postRes = await fetch(
+    `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/post`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "x",
+        credentials: creds,
+        text: hookText,
+        ...(replyText ? { splitReply: replyText } : {}),
+      }),
+    }
+  );
+
+  return await postRes.json();
+}
+
+async function postToThreadsViaCron(supabase: any, userId: string, hookText: string, replyText: string | null) {
+  const { data: threadsKeys } = await supabase
+    .from("api_keys")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("provider", "threads");
+
+  if (!threadsKeys?.length) return { error: "No Threads API keys" };
+
+  const keyMap: Record<string, string> = {};
+  for (const k of threadsKeys) {
+    keyMap[k.key_name] = decrypt(k.encrypted_value);
+  }
+
+  const creds = {
+    accessToken: keyMap["access_token"] || keyMap["accessToken"],
+    userId: keyMap["user_id"] || keyMap["userId"],
+  };
+
+  if (!creds.accessToken || !creds.userId) return { error: "Incomplete Threads keys" };
+
+  const postRes = await fetch(
+    `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/post`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "threads",
+        credentials: creds,
+        text: hookText,
+        ...(replyText ? { splitReply: replyText } : {}),
+      }),
+    }
+  );
+
+  return await postRes.json();
 }

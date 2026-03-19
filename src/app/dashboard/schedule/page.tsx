@@ -6,39 +6,59 @@ import { Button } from "@/components/ui/button";
 
 type Execution = { id: string; scheduled_time: string; status: string; error_message: string | null; sns_results: any; created_at: string };
 type UserPlan = "free" | "pro" | "business";
-type PostLength = "short" | "standard" | "long";
-type CharacterType = "none"|"gal"|"philosopher"|"housewife"|"yankee"|"sensei"|"otaku"|"gyaru_mama"|"host"|"monk"|"child";
 
-const PLAN_MAX_TIMES: Record<UserPlan, number> = { free: 3, pro: 10, business: -1 };
+interface Slot {
+  time: string;
+  target: "x" | "threads" | "both";
+  style: string;
+  character: string;
+  length: string;
+  split: boolean;
+}
+
+const PLAN_MAX_SLOTS: Record<UserPlan, number> = { free: 3, pro: 10, business: -1 };
 function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" ? 1 : 2; }
 
-const LENGTH_OPTIONS: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
-  { id: "short", label: "短い", desc: "60文字前後", minPlan: "pro" },
-  { id: "standard", label: "標準", desc: "120〜140文字", minPlan: "free" },
-  { id: "long", label: "長い", desc: "400〜500文字", minPlan: "pro" },
+const STYLES = [
+  { id: "mix", label: "ミックス" },
+  { id: "paradigm_break", label: "常識破壊" },
+  { id: "provocative", label: "毒舌問いかけ" },
+  { id: "flip", label: "ひっくり返し" },
+  { id: "poison_story", label: "毒入りストーリー" },
 ];
-const CHARACTER_OPTIONS: { id: CharacterType; label: string; desc: string }[] = [
-  { id: "none", label: "なし", desc: "デフォルト" },
-  { id: "gal", label: "ギャル", desc: "ノリで真理突く" },
-  { id: "philosopher", label: "哲学者", desc: "静かに深く" },
-  { id: "housewife", label: "主婦", desc: "生活者目線" },
-  { id: "yankee", label: "元ヤン", desc: "荒いけど正論" },
-  { id: "sensei", label: "熱血教師", desc: "熱く語る" },
-  { id: "otaku", label: "オタク", desc: "早口で本質" },
-  { id: "gyaru_mama", label: "ギャルママ", desc: "軽いのに深い" },
-  { id: "host", label: "ホスト", desc: "甘い毒" },
-  { id: "monk", label: "坊主", desc: "悟りの刃" },
-  { id: "child", label: "子ども", desc: "無邪気に刺す" },
+
+const CHARACTERS = [
+  { id: "none", label: "なし" },
+  { id: "gal", label: "ギャル" },
+  { id: "philosopher", label: "哲学者" },
+  { id: "housewife", label: "主婦" },
+  { id: "yankee", label: "元ヤン" },
+  { id: "sensei", label: "熱血教師" },
+  { id: "otaku", label: "オタク" },
+  { id: "gyaru_mama", label: "ギャルママ" },
+  { id: "host", label: "ホスト" },
+  { id: "monk", label: "坊主" },
+  { id: "child", label: "子ども" },
 ];
+
+const LENGTHS = [
+  { id: "short", label: "短い", minPlan: "pro" as UserPlan },
+  { id: "standard", label: "標準", minPlan: "free" as UserPlan },
+  { id: "long", label: "長い", minPlan: "pro" as UserPlan },
+];
+
+const TARGETS = [
+  { id: "x" as const, label: "X" },
+  { id: "threads" as const, label: "Threads" },
+  { id: "both" as const, label: "X + Threads" },
+];
+
+const DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
-  const [times, setTimes] = useState(["07:00"]);
-  const [snsTargets, setSnsTargets] = useState<string[]>(["x"]);
-  const [style, setStyle] = useState("mix");
-  const [postLength, setPostLength] = useState<PostLength>("standard");
-  const [splitMode, setSplitMode] = useState(false);
-  const [character, setCharacter] = useState<CharacterType>("none");
+  const [slots, setSlots] = useState<Slot[]>([{ ...DEFAULT_SLOT, time: "07:00" }]);
+  const [expandedSlot, setExpandedSlot] = useState<number | null>(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [executions, setExecutions] = useState<Execution[]>([]);
@@ -48,7 +68,10 @@ export default function SchedulePage() {
   useEffect(() => { fetchSchedule(); fetchPlan(); }, []);
 
   async function fetchPlan() {
-    try { const res = await fetch("/api/dashboard"); if (res.ok) { const data = await res.json(); setUserPlan((data.plan?.id || "free").toLowerCase() as UserPlan); } } catch (e) { console.error(e); }
+    try {
+      const res = await fetch("/api/dashboard");
+      if (res.ok) { const d = await res.json(); setUserPlan((d.plan?.id || "free").toLowerCase() as UserPlan); }
+    } catch {}
   }
 
   async function fetchSchedule() {
@@ -58,30 +81,59 @@ export default function SchedulePage() {
         const data = await res.json();
         if (data.config) {
           setEnabled(data.config.enabled);
-          setTimes(data.config.times || ["07:00"]);
-          setSnsTargets(data.config.sns_targets || ["x"]);
-          setStyle(data.config.style || "mix");
-          setPostLength(data.config.post_length || "standard");
-          setSplitMode(data.config.split_mode || false);
-          setCharacter(data.config.character_type || "none");
+          // 新形式 (slots) を優先、なければ旧形式から変換
+          if (data.config.slots && data.config.slots.length > 0) {
+            setSlots(data.config.slots);
+          } else if (data.config.times) {
+            // 旧形式→新形式に変換
+            const oldTimes = data.config.times as string[];
+            const oldTarget = (data.config.sns_targets || ["x"]) as string[];
+            const target = oldTarget.includes("x") && oldTarget.includes("threads") ? "both" : oldTarget.includes("threads") ? "threads" : "x";
+            setSlots(oldTimes.map((t: string) => ({
+              time: t,
+              target: target as Slot["target"],
+              style: data.config.style || "mix",
+              character: data.config.character_type || "none",
+              length: data.config.post_length || "standard",
+              split: data.config.split_mode || false,
+            })));
+          }
         }
         setExecutions(data.executions || []);
       }
-    } catch (e) { console.error(e); } finally { setLoading(false); }
+    } catch {} finally { setLoading(false); }
   }
 
   async function handleSave() {
     setSaving(true); setSaved(false);
     try {
-      const res = await fetch("/api/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled, times, snsTargets, style, postLength, splitMode, character }) });
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, slots }),
+      });
       if (res.ok) setSaved(true);
-    } catch (e) { console.error(e); } finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
+    } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
+  }
+
+  function updateSlot(index: number, updates: Partial<Slot>) {
+    setSlots(prev => prev.map((s, i) => i === index ? { ...s, ...updates } : s));
+  }
+
+  function addSlot() {
+    setSlots(prev => [...prev, { ...DEFAULT_SLOT }]);
+    setExpandedSlot(slots.length);
+  }
+
+  function removeSlot(index: number) {
+    setSlots(prev => prev.filter((_, i) => i !== index));
+    setExpandedSlot(null);
   }
 
   function formatDate(d: string) { return new Date(d).toLocaleDateString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
 
-  const maxTimes = PLAN_MAX_TIMES[userPlan];
-  const canAddMore = maxTimes === -1 || times.length < maxTimes;
+  const maxSlots = PLAN_MAX_SLOTS[userPlan];
+  const canAddMore = maxSlots === -1 || slots.length < maxSlots;
   const canUseCharacter = planLevel(userPlan) >= 1;
   const canUseSplit = planLevel(userPlan) >= 2;
   const canUseThreads = planLevel(userPlan) >= 2;
@@ -103,93 +155,141 @@ export default function SchedulePage() {
               <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (enabled ? "translate-x-6" : "translate-x-1")} />
             </button>
           </div>
-          <p className="text-sm text-gray-500 mt-1">{enabled ? "自動投稿が有効です。設定した時間にAIが自動投稿します。" : "自動投稿は無効です。オンにすると設定した時間に自動投稿されます。"}</p>
+          <p className="text-sm text-gray-500 mt-1">{enabled ? "自動投稿が有効です" : "自動投稿は無効です"}</p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
-            {/* Times */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">投稿時間 (JST)<span className="ml-2 text-xs text-gray-400">{times.length} / {maxTimes === -1 ? "∞" : maxTimes}枠</span></label>
-              <div className="flex flex-wrap gap-2">
-                {times.map((time, i) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <input type="time" value={time} onChange={(e) => { const n = [...times]; n[i] = e.target.value; setTimes(n); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
-                    {times.length > 1 && <button onClick={() => setTimes(times.filter((_, j) => j !== i))} className="p-1 text-gray-400 hover:text-red-500"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>}
-                  </div>
-                ))}
-                {canAddMore ? (
-                  <button onClick={() => setTimes([...times, "18:00"])} className="px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400">+ 追加</button>
-                ) : (
-                  <a href="/pricing" className="px-3 py-2 border border-dashed border-amber-300 rounded-lg text-xs text-amber-600 hover:bg-amber-50">🔒 アップグレードで枠追加 →</a>
-                )}
-              </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-700">投稿スロット<span className="ml-2 text-xs text-gray-400">{slots.length} / {maxSlots === -1 ? "∞" : maxSlots}枠</span></label>
             </div>
 
-            {/* SNS Targets */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">投稿先</label>
-              <div className="flex gap-2">
-                <button onClick={() => setSnsTargets(snsTargets.includes("x") ? snsTargets.filter((s) => s !== "x") : [...snsTargets, "x"])} className={"px-4 py-2 rounded-lg text-sm font-medium border transition-colors " + (snsTargets.includes("x") ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{snsTargets.includes("x") ? "✓ " : ""}X</button>
-                {canUseThreads ? (
-                  <button onClick={() => setSnsTargets(snsTargets.includes("threads") ? snsTargets.filter((s) => s !== "threads") : [...snsTargets, "threads"])} className={"px-4 py-2 rounded-lg text-sm font-medium border transition-colors " + (snsTargets.includes("threads") ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{snsTargets.includes("threads") ? "✓ " : ""}Threads</button>
-                ) : (
-                  <button onClick={() => window.location.href = "/pricing"} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50">Threads 🔒</button>
-                )}
-              </div>
-              {!canUseThreads && <a href="/pricing" className="block text-xs text-brand-600 hover:text-brand-700 mt-1">Businessプランで解放 →</a>}
-            </div>
+            {slots.map((slot, i) => {
+              const isExpanded = expandedSlot === i;
+              const targetLabel = TARGETS.find(t => t.id === slot.target)?.label || "X";
+              const styleLabel = STYLES.find(s => s.id === slot.style)?.label || "ミックス";
+              const charLabel = CHARACTERS.find(c => c.id === slot.character)?.label || "なし";
 
-            {/* Style */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">投稿スタイル</label>
-              <div className="flex flex-wrap gap-2">
-                {[{ id: "mix", name: "ミックス" }, { id: "paradigm_break", name: "常識破壊" }, { id: "provocative", name: "毒舌問いかけ" }, { id: "flip", name: "ひっくり返し" }, { id: "poison_story", name: "毒入りストーリー" }].map((s) => (
-                  <button key={s.id} onClick={() => setStyle(s.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (style === s.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{s.name}</button>
-                ))}
-              </div>
-            </div>
+              return (
+                <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
+                  {/* Slot Header (collapsed view) */}
+                  <button
+                    onClick={() => setExpandedSlot(isExpanded ? null : i)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-mono font-semibold text-gray-900">{slot.time}</span>
+                      <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (slot.target === "x" ? "bg-gray-100 text-gray-700" : slot.target === "threads" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700")}>{targetLabel}</span>
+                      <span className="text-xs text-gray-500">{styleLabel}</span>
+                      {slot.character !== "none" && <span className="text-xs text-gray-400">/ {charLabel}</span>}
+                      {slot.split && <span className="text-xs text-purple-500">分割</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <svg className={"w-4 h-4 text-gray-400 transition-transform " + (isExpanded ? "rotate-180" : "")} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </button>
 
-            {/* Character */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">キャラ設定{!canUseCharacter && <span className="ml-1 text-xs text-gray-300">（Proプラン以上）</span>}</label>
-              {!canUseCharacter ? (
-                <div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {CHARACTER_OPTIONS.slice(0, 4).map((c) => (
-                      <button key={c.id} onClick={() => { if (c.id !== "none") window.location.href = "/pricing"; }} className={"px-3 py-1.5 rounded-md text-xs font-medium border " + (c.id === "none" ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50")}>{c.label}{c.id !== "none" && " 🔒"}</button>
-                    ))}
-                    <span className="px-3 py-1.5 text-xs text-gray-300">+7種類</span>
-                  </div>
-                  <a href="/pricing" className="block text-xs text-brand-600 hover:text-brand-700 mt-1">Proプランで10種のキャラが解放 →</a>
+                  {/* Slot Detail (expanded) */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t border-gray-100 bg-gray-50 space-y-4 pt-4">
+                      {/* Time */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">時間 (JST)</label>
+                        <input type="time" value={slot.time}
+                          onChange={(e) => updateSlot(i, { time: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                      </div>
+
+                      {/* Target */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">投稿先</label>
+                        <div className="flex gap-1.5">
+                          {TARGETS.map((t) => {
+                            const needsBusiness = t.id !== "x" && !canUseThreads;
+                            return (
+                              <button key={t.id}
+                                onClick={() => needsBusiness ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id })}
+                                className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                                  (slot.target === t.id ? "border-brand-500 bg-brand-50 text-brand-700" :
+                                    needsBusiness ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
+                                      "border-gray-200 text-gray-600 hover:border-gray-300")}
+                              >{t.label}{needsBusiness && " 🔒"}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Style */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">投稿スタイル</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {STYLES.map((s) => (
+                            <button key={s.id} onClick={() => updateSlot(i, { style: s.id })}
+                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.style === s.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{s.label}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Character */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">キャラ設定{!canUseCharacter && <span className="ml-1 text-gray-400">(Pro🔒)</span>}</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(canUseCharacter ? CHARACTERS : CHARACTERS.slice(0, 1)).map((c) => (
+                            <button key={c.id} onClick={() => updateSlot(i, { character: c.id })}
+                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.character === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{c.label}</button>
+                          ))}
+                          {!canUseCharacter && <a href="/pricing" className="px-3 py-1.5 text-xs text-amber-600 hover:text-amber-700">🔒 Proで解放 →</a>}
+                        </div>
+                      </div>
+
+                      {/* Length + Split */}
+                      <div className="flex gap-6">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">長さ</label>
+                          <div className="flex gap-1.5">
+                            {LENGTHS.map((l) => {
+                              const locked = planLevel(userPlan) < planLevel(l.minPlan);
+                              return (
+                                <button key={l.id}
+                                  onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { length: l.id })}
+                                  className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                                    (slot.length === l.id ? "border-brand-500 bg-brand-50 text-brand-700" :
+                                      locked ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
+                                        "border-gray-200 text-gray-600 hover:border-gray-300")}
+                                >{l.label}{locked && " 🔒"}</button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">分割投稿</label>
+                          <button
+                            onClick={() => canUseSplit ? updateSlot(i, { split: !slot.split }) : (window.location.href = "/pricing")}
+                            className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                              (slot.split ? "border-purple-500 bg-purple-50 text-purple-700" :
+                                !canUseSplit ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
+                                  "border-gray-200 text-gray-600 hover:border-gray-300")}
+                          >{slot.split ? "✓ " : ""}フック→リプ{!canUseSplit && " 🔒"}</button>
+                        </div>
+                      </div>
+
+                      {/* Delete */}
+                      {slots.length > 1 && (
+                        <button onClick={() => removeSlot(i)} className="text-xs text-red-500 hover:text-red-700">このスロットを削除</button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {CHARACTER_OPTIONS.map((c) => (
-                    <button key={c.id} onClick={() => setCharacter(c.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (character === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={c.desc}>{c.label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+              );
+            })}
 
-            {/* Post Length */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">投稿の長さ</label>
-              <div className="flex gap-1.5">
-                {LENGTH_OPTIONS.map((opt) => {
-                  const locked = planLevel(userPlan) < planLevel(opt.minPlan);
-                  return <button key={opt.id} onClick={() => { if (locked) { window.location.href = "/pricing"; return; } if (!splitMode) setPostLength(opt.id); }} disabled={splitMode && !locked} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (postLength === opt.id && !splitMode ? "border-brand-500 bg-brand-50 text-brand-700" : locked ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : splitMode ? "border-gray-100 bg-gray-50 text-gray-300" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{opt.label}{locked && " 🔒"}</button>;
-                })}
-              </div>
-            </div>
+            {/* Add Slot */}
+            {canAddMore ? (
+              <button onClick={addSlot} className="w-full py-2.5 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-600 transition-colors">+ スロットを追加</button>
+            ) : (
+              <a href="/pricing" className="block w-full py-2.5 border border-dashed border-amber-300 rounded-lg text-sm text-center text-amber-600 hover:bg-amber-50">🔒 アップグレードでスロット追加 →</a>
+            )}
 
-            {/* Split Mode */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">分割投稿</label>
-              <button onClick={() => { if (!canUseSplit) { window.location.href = "/pricing"; return; } setSplitMode(!splitMode); }} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (splitMode ? "border-purple-500 bg-purple-50 text-purple-700" : !canUseSplit ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{splitMode ? "✓ " : ""}フック → リプ{!canUseSplit && " 🔒"}</button>
-              {!canUseSplit && <a href="/pricing" className="block text-xs text-brand-600 hover:text-brand-700 mt-1">Businessプランで解放 →</a>}
-            </div>
-
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pt-2">
               <Button onClick={handleSave} disabled={saving}>{saving ? "保存中..." : "保存する"}</Button>
               {saved && <span className="text-sm text-green-600">保存しました！</span>}
             </div>
@@ -209,7 +309,6 @@ export default function SchedulePage() {
           {executions.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <p className="text-sm">まだ自動投稿の実行履歴はありません</p>
-              <p className="text-xs mt-1">スケジュールを有効にすると、ここに実行結果が表示されます</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -220,10 +319,7 @@ export default function SchedulePage() {
                     <span className="text-sm text-gray-700">{exec.scheduled_time}</span>
                     <span className={"text-xs px-2 py-0.5 rounded-full " + (exec.status === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700")}>{exec.status === "success" ? "成功" : "失敗"}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {exec.error_message && <span className="text-xs text-red-500 max-w-48 truncate">{exec.error_message}</span>}
-                    <span className="text-xs text-gray-400">{formatDate(exec.created_at)}</span>
-                  </div>
+                  <span className="text-xs text-gray-400">{formatDate(exec.created_at)}</span>
                 </div>
               ))}
             </div>
@@ -233,7 +329,7 @@ export default function SchedulePage() {
 
       <div className="mt-6 p-4 bg-gray-50 rounded-xl text-xs text-gray-500">
         <p className="font-medium text-gray-600 mb-1">自動投稿の仕組み</p>
-        <p>5分間隔でスケジュールをチェックし、設定時刻の前後5分以内に自動投稿を実行します。マイコンセプトとAI APIキーの設定が必要です。</p>
+        <p>設定時刻に自動投稿を実行します。スロットごとに投稿先・スタイル・キャラを個別設定できます。マイコンセプトとAI APIキーの設定が必要です。</p>
       </div>
     </div>
   );

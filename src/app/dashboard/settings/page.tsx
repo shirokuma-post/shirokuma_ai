@@ -19,6 +19,7 @@ export default function SettingsPage() {
   const [selectedAi, setSelectedAi] = useState<AiProvider>("anthropic");
   const [aiKey, setAiKey] = useState("");
   const [xKeys, setXKeys] = useState({ consumerKey: "", consumerSecret: "", accessToken: "", accessTokenSecret: "" });
+  const [threadsKeys, setThreadsKeys] = useState({ accessToken: "", userId: "" });
   const [postStyle, setPostStyle] = useState("mix");
   const [scheduleTimes, setScheduleTimes] = useState(["07:00", "12:30", "21:00"]);
   const [saving, setSaving] = useState(false);
@@ -27,6 +28,8 @@ export default function SettingsPage() {
   const [savedAi, setSavedAi] = useState(false);
   const [savingX, setSavingX] = useState(false);
   const [savedX, setSavedX] = useState(false);
+  const [savingThreads, setSavingThreads] = useState(false);
+  const [savedThreads, setSavedThreads] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savedKeys, setSavedKeys] = useState<string[]>([]);
 
@@ -109,6 +112,30 @@ export default function SettingsPage() {
       setTimeout(() => setSavedX(false), 3000);
     } catch (e) { console.error(e); }
     setSavingX(false);
+  }
+
+  async function handleSaveThreadsKeys() {
+    setSavingThreads(true); setSavedThreads(false);
+    try {
+      const keys = [
+        { key_name: "access_token", value: threadsKeys.accessToken },
+        { key_name: "user_id", value: threadsKeys.userId },
+      ];
+      for (const k of keys) {
+        if (k.value.trim()) {
+          await fetch("/api/apikeys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "threads", key_name: k.key_name, value: k.value }),
+          });
+        }
+      }
+      setSavedThreads(true);
+      setSavedKeys(prev => [...prev.filter(k => !k.startsWith("threads:")), "threads:access_token", "threads:user_id"]);
+      setThreadsKeys({ accessToken: "", userId: "" });
+      setTimeout(() => setSavedThreads(false), 3000);
+    } catch (e) { console.error(e); }
+    setSavingThreads(false);
   }
 
   async function handleFileImport() {
@@ -272,6 +299,45 @@ export default function SettingsPage() {
                     {savingX ? "保存中..." : "保存する"}
                   </Button>
                   {savedX && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">Threads (Meta) APIキー</h2>
+                  <p className="text-sm text-gray-500 mt-1">Meta Developer Portalで取得したThreads APIの認証情報を設定（Businessプラン限定）</p>
+                </div>
+                {isKeySaved("threads") && (
+                  <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 設定済み</span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Access Token</label>
+                  <input type="password" value={threadsKeys.accessToken}
+                    onChange={(e) => setThreadsKeys(prev => ({ ...prev, accessToken: e.target.value }))}
+                    placeholder={isKeySaved("threads") ? "••••••••（設定済み）" : "Threads APIのアクセストークン"}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+                  <input type="text" value={threadsKeys.userId}
+                    onChange={(e) => setThreadsKeys(prev => ({ ...prev, userId: e.target.value }))}
+                    placeholder={isKeySaved("threads") ? "••••••••（設定済み）" : "ThreadsのユーザーID（数字）"}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                </div>
+                <p className="text-xs text-gray-400">Meta Developer Portal → Threads API → アクセストークンとユーザーIDを取得</p>
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSaveThreadsKeys} disabled={savingThreads || !threadsKeys.accessToken.trim() || !threadsKeys.userId.trim()}>
+                    {savingThreads ? "保存中..." : "保存する"}
+                  </Button>
+                  {savedThreads && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
                 </div>
               </div>
             </CardContent>
