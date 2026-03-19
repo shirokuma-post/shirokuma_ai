@@ -98,6 +98,61 @@ const SNS_CONTEXT: Record<SnsTarget, string> = {
 - カジュアルで親しみやすいトーン。`,
 };
 
+// =====================================================
+// 構造化サマリー（7カテゴリ、部分入力OK）
+// =====================================================
+export interface StructuredSummary {
+  axiom?: string;        // 【公理】唯一の前提
+  structure?: string;    // 【構造】理論の骨格
+  logic?: string;        // 【ロジック】導出の筋道
+  weapons?: string[];    // 【武器】投稿で使えるフレームワーク
+  stance?: string;       // 【スタンス】何を否定し、何を主張するか
+  method?: string;       // 【メソッド】実践の手順
+  voice?: string;        // 【声】口調・トーンの特徴
+}
+
+export function parseStructuredSummary(summary: string | null): StructuredSummary | null {
+  if (!summary) return null;
+  try {
+    const parsed = JSON.parse(summary);
+    // _type フラグで構造化サマリーかどうかを判定
+    if (parsed._type === "structured") {
+      return parsed as StructuredSummary;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function buildStructuredContext(s: StructuredSummary): string {
+  const sections: string[] = [];
+  if (s.axiom)     sections.push(`■ 公理（絶対前提）:\n${s.axiom}`);
+  if (s.structure)  sections.push(`■ 理論構造:\n${s.structure}`);
+  if (s.logic)      sections.push(`■ ロジック（なぜそう言えるか）:\n${s.logic}`);
+  if (s.weapons?.length) sections.push(`■ 武器（切り口フレームワーク）:\n${s.weapons.map(w => `- ${w}`).join("\n")}`);
+  if (s.stance)     sections.push(`■ スタンス（何を否定し何を主張するか）:\n${s.stance}`);
+  if (s.method)     sections.push(`■ メソッド（実践手順）:\n${s.method}`);
+  if (s.voice)      sections.push(`■ 声・トーン:\n${s.voice}`);
+  return sections.join("\n\n");
+}
+
+function getPhilosophyContext(philosophy: Philosophy): string {
+  const structured = parseStructuredSummary(philosophy.summary);
+  if (structured) {
+    return buildStructuredContext(structured);
+  }
+  // 従来フォールバック
+  let ctx = `■ 思想の核心:\n${philosophy.summary || philosophy.content.slice(0, 2000)}`;
+  if (philosophy.core_concepts) {
+    ctx += `\n\n■ コアコンセプト:\n${philosophy.core_concepts.join("\n")}`;
+  }
+  return ctx;
+}
+
+// =====================================================
+// プロンプトビルダー
+// =====================================================
 interface GenerateOptions {
   philosophy: Philosophy;
   style: PostStyle;
@@ -117,13 +172,11 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const allBanned = [...BANNED_WORDS, ...(customBannedWords || [])];
   const lengthConfig = LENGTH_CONFIGS[postLength];
   const charConfig = CHARACTERS[character];
+  const philosophyContext = getPhilosophyContext(philosophy);
 
-  const system = `あなたは、独自の思想を持つ思考リーダーのSNS投稿を代筆するライターです。
+  const system = `あなたは、独自の理論体系を持つ思考リーダーのSNS投稿を代筆するライターです。
 
-■ 思想の核心:
-${philosophy.summary || philosophy.content.slice(0, 2000)}
-
-${philosophy.core_concepts ? `■ コアコンセプト:\n${philosophy.core_concepts.join("\n")}` : ""}
+${philosophyContext}
 
 ■ 投稿スタイル:
 ${STYLE_PROMPTS[actualStyle]}
@@ -145,10 +198,11 @@ ${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
 - 「〜しましょう」「〜ですよね」など禁止
 - 断言する。問いかけるなら鋭く
 - 読んだ人が「うわ、マジか」と思うインパクトを最優先
+- 武器（フレームワーク）があれば、それを使った切り口で攻めろ
 
 ${customPrompt ? `■ カスタム指示:\n${customPrompt}` : ""}`;
 
-  const user = "上記の思想に基づいて、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
+  const user = "上記の理論体系に基づいて、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
   return { system, user };
 }
 
@@ -159,13 +213,11 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
     : style;
   const allBanned = [...BANNED_WORDS, ...(customBannedWords || [])];
   const charConfig = CHARACTERS[character];
+  const philosophyContext = getPhilosophyContext(philosophy);
 
-  const system = `あなたは、独自の思想を持つ思考リーダーのSNS投稿を代筆するライターです。
+  const system = `あなたは、独自の理論体系を持つ思考リーダーのSNS投稿を代筆するライターです。
 
-■ 思想の核心:
-${philosophy.summary || philosophy.content.slice(0, 2000)}
-
-${philosophy.core_concepts ? `■ コアコンセプト:\n${philosophy.core_concepts.join("\n")}` : ""}
+${philosophyContext}
 
 ■ 投稿スタイル:
 ${STYLE_PROMPTS[actualStyle]}
@@ -191,10 +243,11 @@ ${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
 - ハッシュタグは使わない
 - hookは「え？」「マジ？」と思わせる内容
 - replyはhookの期待に応える深い内容
+- 武器（フレームワーク）があれば、それを使った切り口で攻めろ
 
 ${customPrompt ? `■ カスタム指示:\n${customPrompt}` : ""}`;
 
-  const user = "上記の思想に基づいて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。";
+  const user = "上記の理論体系に基づいて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。";
   return { system, user };
 }
 

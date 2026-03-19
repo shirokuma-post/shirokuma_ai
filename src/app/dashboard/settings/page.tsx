@@ -32,6 +32,8 @@ export default function SettingsPage() {
   const [savedThreads, setSavedThreads] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savedKeys, setSavedKeys] = useState<string[]>([]);
+  const [structuring, setStructuring] = useState(false);
+  const [structuredSummary, setStructuredSummary] = useState<any>(null);
 
   useEffect(() => {
     async function load() {
@@ -45,6 +47,13 @@ export default function SettingsPage() {
         if (phData.philosophy) {
           setPhilosophyTitle(phData.philosophy.title);
           setPhilosophyText(phData.philosophy.content);
+          // 構造化サマリーがあれば復元
+          if (phData.philosophy.summary) {
+            try {
+              const parsed = JSON.parse(phData.philosophy.summary);
+              if (parsed._type === "structured") setStructuredSummary(parsed);
+            } catch {}
+          }
         }
         if (keyData.keys) {
           setSavedKeys(keyData.keys.map((k: any) => k.provider + ":" + k.key_name));
@@ -145,6 +154,28 @@ export default function SettingsPage() {
     setSavingThreads(false);
   }
 
+  async function handleStructure() {
+    setStructuring(true);
+    try {
+      const res = await fetch("/api/philosophy/structure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: philosophyText }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert("構造化に失敗: " + (err.error || "不明なエラー"));
+        setStructuring(false);
+        return;
+      }
+      const data = await res.json();
+      setStructuredSummary(data.structured);
+    } catch (e: any) {
+      alert("構造化に失敗: " + e.message);
+    }
+    setStructuring(false);
+  }
+
   async function handleFileImport() {
     const input = document.createElement("input");
     input.type = "file"; input.accept = ".txt,.md";
@@ -214,13 +245,56 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent resize-none" />
                   <p className="text-xs text-gray-400 mt-1.5">.txt / .md ファイルからインポートもできます</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <Button onClick={handleSavePhilosophy} disabled={saving || !philosophyText.trim() || !philosophyTitle.trim()}>
                     {saving ? "保存中..." : "保存する"}
                   </Button>
                   <Button variant="secondary" onClick={handleFileImport}>ファイルからインポート</Button>
+                  <Button variant="secondary" onClick={handleStructure}
+                    disabled={structuring || !philosophyText.trim()}>
+                    {structuring ? "AI構造化中..." : "AIで構造化"}
+                  </Button>
                   {saved && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
                 </div>
+                {structuredSummary && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-gray-900">構造化サマリー（投稿生成に使用）</h3>
+                      <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 rounded-full">適用中</span>
+                    </div>
+                    <div className="space-y-2 text-xs text-gray-700">
+                      {structuredSummary.axiom && (
+                        <div><span className="font-semibold text-gray-900">公理:</span> {structuredSummary.axiom}</div>
+                      )}
+                      {structuredSummary.structure && (
+                        <div><span className="font-semibold text-gray-900">構造:</span> {structuredSummary.structure}</div>
+                      )}
+                      {structuredSummary.logic && (
+                        <div><span className="font-semibold text-gray-900">ロジック:</span> {structuredSummary.logic}</div>
+                      )}
+                      {structuredSummary.weapons?.length > 0 && (
+                        <div>
+                          <span className="font-semibold text-gray-900">武器:</span>
+                          <ul className="ml-4 mt-1 space-y-0.5">
+                            {structuredSummary.weapons.map((w: string, i: number) => (
+                              <li key={i}>• {w}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {structuredSummary.stance && (
+                        <div><span className="font-semibold text-gray-900">スタンス:</span> {structuredSummary.stance}</div>
+                      )}
+                      {structuredSummary.method && (
+                        <div><span className="font-semibold text-gray-900">メソッド:</span> {structuredSummary.method}</div>
+                      )}
+                      {structuredSummary.voice && (
+                        <div><span className="font-semibold text-gray-900">声:</span> {structuredSummary.voice}</div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-3">この構造化データが投稿生成プロンプトに使われます。再構造化したい場合は「AIで構造化」を再度押してください。</p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
