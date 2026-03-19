@@ -8,6 +8,7 @@ type Post = { id: string; content: string; style_used: string; status: string; p
 type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
 type CharacterType = "none"|"gal"|"philosopher"|"housewife"|"yankee"|"sensei"|"otaku"|"gyaru_mama"|"host"|"monk"|"child";
+type SnsTarget = "x" | "threads";
 
 const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "毒舌問いかけ", flip: "ひっくり返し", poison_story: "毒入りストーリー", mix: "ミックス" };
 const STYLE_OPTIONS = [
@@ -17,8 +18,11 @@ const STYLE_OPTIONS = [
   { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
   { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
 ];
-const LENGTH_OPTIONS: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
+const LENGTH_OPTIONS_X: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
   { id: "short", label: "短い", desc: "60文字前後", minPlan: "pro" },
+  { id: "standard", label: "標準", desc: "120〜140文字", minPlan: "free" },
+];
+const LENGTH_OPTIONS_THREADS: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
   { id: "standard", label: "標準", desc: "120〜140文字", minPlan: "free" },
   { id: "long", label: "長い", desc: "400〜500文字", minPlan: "pro" },
 ];
@@ -38,6 +42,20 @@ const CHARACTER_OPTIONS: { id: CharacterType; label: string; desc: string }[] = 
 function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" ? 1 : 2; }
 
 export default function PostsPage() {
+  // --- SNS tab ---
+  const [snsTab, setSnsTab] = useState<SnsTarget>("x");
+
+  // --- Per-SNS settings ---
+  const [xStyle, setXStyle] = useState("mix");
+  const [xLength, setXLength] = useState<PostLength>("standard");
+  const [xCharacter, setXCharacter] = useState<CharacterType>("none");
+
+  const [thStyle, setThStyle] = useState("mix");
+  const [thLength, setThLength] = useState<PostLength>("standard");
+  const [thCharacter, setThCharacter] = useState<CharacterType>("none");
+  const [thSplitMode, setThSplitMode] = useState(false);
+
+  // --- Shared state ---
   const [generating, setGenerating] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -45,14 +63,13 @@ export default function PostsPage() {
   const [editReply, setEditReply] = useState("");
   const [posting, setPosting] = useState<string | null>(null);
   const [postResult, setPostResult] = useState<string | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<SnsTarget>("x");
+
   const [dailyCount, setDailyCount] = useState(0);
   const [dailyLimit, setDailyLimit] = useState(3);
   const [limitReached, setLimitReached] = useState(false);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
-  const [postStyle, setPostStyle] = useState("mix");
-  const [postLength, setPostLength] = useState<PostLength>("standard");
-  const [splitMode, setSplitMode] = useState(false);
-  const [character, setCharacter] = useState<CharacterType>("none");
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalPosts, setTotalPosts] = useState(0);
@@ -83,11 +100,29 @@ export default function PostsPage() {
   async function handleGenerate() {
     if (limitReached) return;
     setGenerating(true); setPostResult(null); setSplitReply(null); setEditReply("");
+
+    const isX = snsTab === "x";
+    const style = isX ? xStyle : thStyle;
+    const postLength = isX ? xLength : thLength;
+    const character = isX ? xCharacter : thCharacter;
+    const splitMode = isX ? false : thSplitMode; // X は分割不可
+
     try {
-      const res = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ style: postStyle, postLength: splitMode ? "standard" : postLength, splitMode, character: character !== "none" ? character : undefined }) });
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          style,
+          postLength: splitMode ? "standard" : postLength,
+          splitMode,
+          character: character !== "none" ? character : undefined,
+          snsTarget: snsTab,
+        }),
+      });
       const data = await res.json();
       if (res.ok) {
         setPreview(data.content); setEditText(data.content);
+        setPreviewTarget(snsTab);
         if (data.splitReply) { setSplitReply(data.splitReply); setEditReply(data.splitReply); }
         setDailyCount((c) => c + 1);
         if (dailyCount + 1 >= dailyLimit && dailyLimit !== -1) setLimitReached(true);
@@ -95,8 +130,9 @@ export default function PostsPage() {
     } catch (e) { setPostResult("エラー: 通信に失敗しました"); } finally { setGenerating(false); }
   }
 
-  async function handlePost(provider: "x" | "threads") {
+  async function handlePost() {
     if (!editText) return;
+    const provider = previewTarget;
     setPosting(provider); setPostResult(null);
     try {
       const payload: any = { provider, text: editText };
@@ -127,9 +163,19 @@ export default function PostsPage() {
     return <div className="flex gap-1">{ids.x && <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>}{ids.threads && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}</div>;
   }
 
-  const canUseSplit = planLevel(userPlan) >= 2;
   const canUseCharacter = planLevel(userPlan) >= 1;
   const canUseThreads = planLevel(userPlan) >= 2;
+  const canUseSplit = planLevel(userPlan) >= 2;
+
+  // Current tab settings
+  const isX = snsTab === "x";
+  const currentStyle = isX ? xStyle : thStyle;
+  const setCurrentStyle = isX ? setXStyle : setThStyle;
+  const currentLength = isX ? xLength : thLength;
+  const setCurrentLength = isX ? setXLength : setThLength;
+  const currentCharacter = isX ? xCharacter : thCharacter;
+  const setCurrentCharacter = isX ? setXCharacter : setThCharacter;
+  const lengthOptions = isX ? LENGTH_OPTIONS_X : LENGTH_OPTIONS_THREADS;
 
   return (
     <div>
@@ -138,27 +184,41 @@ export default function PostsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Posts</h1>
           <p className="text-gray-500 mt-1">投稿の生成・管理 — 本日: <span className="font-medium text-gray-700">{dailyCount} / {dailyLimit === -1 ? "∞" : dailyLimit}</span></p>
         </div>
-        <Button onClick={handleGenerate} disabled={generating || limitReached}>
-          {generating ? <span className="flex items-center gap-2"><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>生成中...</span> : limitReached ? "上限に達しました" : "投稿を生成"}
-        </Button>
+      </div>
+
+      {/* SNS Tab */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-4">
+        <button onClick={() => setSnsTab("x")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "x" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+          <span className="w-4 h-4 bg-black text-white rounded text-[10px] flex items-center justify-center font-bold">X</span>
+          X 向け
+        </button>
+        {canUseThreads ? (
+          <button onClick={() => setSnsTab("threads")}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "threads" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+            <span className="w-4 h-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded text-[10px] flex items-center justify-center font-bold">T</span>
+            Threads 向け
+          </button>
+        ) : (
+          <button onClick={() => window.location.href = "/pricing"}
+            className="px-4 py-2 rounded-md text-sm font-medium text-gray-400 flex items-center gap-1.5 hover:bg-amber-50">
+            Threads 🔒
+            <span className="text-xs text-brand-600">Business</span>
+          </button>
+        )}
       </div>
 
       {/* Options */}
       <Card className="mb-6">
         <CardContent className="pt-5">
           <div className="space-y-4">
-            {/* 投稿先 */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2">投稿先</label>
-              <div className="flex gap-2">
-                <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-brand-500 bg-brand-50 text-brand-700">X</span>
-                {canUseThreads ? (
-                  <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-brand-500 bg-brand-50 text-brand-700">Threads</span>
-                ) : (
-                  <button onClick={() => window.location.href = "/pricing"} className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50">Threads 🔒</button>
-                )}
-                {!canUseThreads && <a href="/pricing" className="self-center text-xs text-brand-600 hover:text-brand-700">Businessで解放 →</a>}
-              </div>
+            {/* SNS label */}
+            <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+              {isX ? (
+                <span className="text-sm font-medium text-gray-700">X 向けに生成 — 短く鋭く、一撃で刺す</span>
+              ) : (
+                <span className="text-sm font-medium text-gray-700">Threads 向けに生成 — 深く語る、共感を生む</span>
+              )}
             </div>
 
             {/* 投稿スタイル */}
@@ -166,7 +226,7 @@ export default function PostsPage() {
               <label className="block text-xs font-medium text-gray-500 mb-2">投稿スタイル</label>
               <div className="flex flex-wrap gap-1.5">
                 {STYLE_OPTIONS.map((s) => (
-                  <button key={s.id} onClick={() => setPostStyle(s.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (postStyle === s.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={s.desc}>{s.name}</button>
+                  <button key={s.id} onClick={() => setCurrentStyle(s.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentStyle === s.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={s.desc}>{s.name}</button>
                 ))}
               </div>
             </div>
@@ -187,32 +247,49 @@ export default function PostsPage() {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {CHARACTER_OPTIONS.map((c) => (
-                    <button key={c.id} onClick={() => setCharacter(c.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (character === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={c.desc}>{c.label}</button>
+                    <button key={c.id} onClick={() => setCurrentCharacter(c.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentCharacter === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={c.desc}>{c.label}</button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* 投稿の長さ + 分割投稿 */}
+            {/* 投稿の長さ + 分割投稿（Threadsのみ） */}
             <div className="flex flex-wrap gap-6">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-2">投稿の長さ</label>
                 <div className="flex gap-1.5">
-                  {LENGTH_OPTIONS.map((opt) => {
+                  {lengthOptions.map((opt) => {
                     const locked = planLevel(userPlan) < planLevel(opt.minPlan);
-                    return <button key={opt.id} onClick={() => { if (locked) { window.location.href = "/pricing"; return; } if (!splitMode) setPostLength(opt.id); }} disabled={splitMode && !locked} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (postLength === opt.id && !splitMode ? "border-brand-500 bg-brand-50 text-brand-700" : locked ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : splitMode ? "border-gray-100 bg-gray-50 text-gray-300" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{opt.label}{locked && " 🔒"}</button>;
+                    const disabled = !isX && thSplitMode;
+                    return <button key={opt.id} onClick={() => { if (locked) { window.location.href = "/pricing"; return; } if (!disabled) setCurrentLength(opt.id); }} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentLength === opt.id && !disabled ? "border-brand-500 bg-brand-50 text-brand-700" : locked ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : disabled ? "border-gray-100 bg-gray-50 text-gray-300" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{opt.label}{locked && " 🔒"}</button>;
                   })}
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
-                <button onClick={() => { if (!canUseSplit) { window.location.href = "/pricing"; return; } setSplitMode(!splitMode); }} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (splitMode ? "border-purple-500 bg-purple-50 text-purple-700" : !canUseSplit ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{splitMode ? "✓ " : ""}フック → リプ{!canUseSplit && " 🔒"}</button>
-                {!canUseSplit && <a href="/pricing" className="block text-xs text-brand-600 hover:text-brand-700 mt-1">Businessで解放 →</a>}
-              </div>
+              {/* 分割投稿: Threads のみ */}
+              {!isX && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
+                  <button onClick={() => { if (!canUseSplit) { window.location.href = "/pricing"; return; } setThSplitMode(!thSplitMode); }} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (thSplitMode ? "border-purple-500 bg-purple-50 text-purple-700" : !canUseSplit ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{thSplitMode ? "✓ " : ""}フック → リプ{!canUseSplit && " 🔒"}</button>
+                  {!canUseSplit && <a href="/pricing" className="block text-xs text-brand-600 hover:text-brand-700 mt-1">Businessで解放 →</a>}
+                </div>
+              )}
+              {isX && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
+                  <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">X API制限により不可</span>
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Generate button */}
+      <div className="mb-6">
+        <Button onClick={handleGenerate} disabled={generating || limitReached} className="w-full sm:w-auto">
+          {generating ? <span className="flex items-center gap-2"><svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>生成中...</span> : limitReached ? "上限に達しました" : isX ? "X 向けに投稿を生成" : "Threads 向けに投稿を生成"}
+        </Button>
+      </div>
 
       {limitReached && <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">本日の投稿上限に達しました。<a href="/pricing" className="underline font-medium ml-1">アップグレードで投稿数を増やせます →</a></div>}
       {postResult && <div className={"mb-6 p-4 rounded-xl text-sm " + (postResult.startsWith("エラー") ? "bg-red-50 border border-red-200 text-red-800" : "bg-green-50 border border-green-200 text-green-800")}>{postResult}</div>}
@@ -220,7 +297,19 @@ export default function PostsPage() {
       {/* Preview */}
       {preview && (
         <Card className="mb-6 border-brand-200">
-          <CardHeader><div className="flex items-center justify-between"><h2 className="font-semibold text-gray-900">{splitReply ? "プレビュー（分割投稿）" : "プレビュー"}</h2><span className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-full">未投稿</span></div></CardHeader>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-gray-900">{splitReply ? "プレビュー（分割投稿）" : "プレビュー"}</h2>
+                {previewTarget === "x" ? (
+                  <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>
+                ) : (
+                  <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>
+                )}
+              </div>
+              <span className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-full">未投稿</span>
+            </div>
+          </CardHeader>
           <CardContent>
             <div className="mb-4">
               {splitReply && <p className="text-xs font-medium text-gray-500 mb-1.5">フック（メイン投稿）</p>}
@@ -235,12 +324,9 @@ export default function PostsPage() {
               </div>
             )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => handlePost("x")} disabled={!!posting}>{posting === "x" ? "投稿中..." : splitReply ? "X にスレッド投稿" : "X に投稿"}</Button>
-              {canUseThreads ? (
-                <Button size="sm" variant="secondary" onClick={() => handlePost("threads")} disabled={!!posting}>{posting === "threads" ? "投稿中..." : splitReply ? "Threads にスレッド投稿" : "Threads に投稿"}</Button>
-              ) : (
-                <button onClick={() => window.location.href = "/pricing"} className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50">Threads 🔒</button>
-              )}
+              <Button size="sm" onClick={handlePost} disabled={!!posting}>
+                {posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : splitReply ? "Threads にスレッド投稿" : "Threads に投稿"}
+              </Button>
               <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating || limitReached}>再生成</Button>
               <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); }}>破棄</Button>
             </div>

@@ -138,89 +138,91 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
   const hour = parseInt(slot.time.split(":")[0]);
   const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
 
-  // 4. Build prompt with slot-specific settings
+  // 4. Slot settings
   const style = (slot.style || "mix") as PostStyle;
   const character = (slot.character || "none") as CharacterType;
   const postLength = (slot.length || "standard") as PostLength;
-  const isSplit = slot.split || false;
+  const provider = aiKey.provider;
+  const decryptedAiKey = decrypt(aiKey.encrypted_value);
 
-  const { system, user } = isSplit
-    ? buildSplitPrompt({ philosophy, style, timeOfDay, character })
-    : buildPrompt({ philosophy, style, timeOfDay, postLength, character });
-
-  // 5. Inject learning context
-  let systemWithLearning = system;
+  // 5. Get learning context (shared across SNS targets)
+  let learningContext = "";
   try {
     const { data: learningPosts } = await supabase
       .from("learning_posts")
       .select("*")
       .eq("user_id", userId);
     if (learningPosts?.length) {
-      const learningContext = buildLearningContext(learningPosts);
-      if (learningContext) {
-        systemWithLearning = system + "\n\n" + learningContext;
-      }
+      learningContext = buildLearningContext(learningPosts) || "";
     }
   } catch {
-    // Non-fatal: continue without learning data
+    // Non-fatal
   }
 
-  // 6. Generate content
-  const maxTokens = isSplit
-    ? 800
-    : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
-
-  const provider = aiKey.provider;
-  let rawContent: string;
-
-  switch (provider) {
-    case "anthropic":
-      rawContent = await generateWithAnthropic(decrypt(aiKey.encrypted_value), systemWithLearning, user, undefined, maxTokens);
-      break;
-    case "openai":
-      rawContent = await generateWithOpenAI(decrypt(aiKey.encrypted_value), systemWithLearning, user, undefined, maxTokens);
-      break;
-    case "google":
-      rawContent = await generateWithGoogle(decrypt(aiKey.encrypted_value), systemWithLearning, user, undefined, maxTokens);
-      break;
-    default:
-      throw new Error("Unknown AI provider: " + provider);
-  }
-
-  let hookText = rawContent;
-  let replyText: string | null = null;
-
-  if (isSplit) {
-    const parsed = parseSplitPost(rawContent);
-    if (!parsed) throw new Error("Split post parse failed");
-    hookText = parsed.hook;
-    replyText = parsed.reply;
-  }
-
-  // 7. Post to target SNS(es)
-  const targets: string[] =
+  // 6. Generate & post per SNS target (separately for different platforms)
+  const targets: ("x" | "threads")[] =
     slot.target === "both" ? ["x", "threads"] : [slot.target];
 
   const snsResults: Record<string, any> = {};
+  let savedContent = "";
 
-  for (const target of targets) {
+  for (const snsTarget of targets) {
+    // X は分割投稿不可（API制限）
+    const isSplit = snsTarget === "x" ? false : (slot.split || false);
+
+    const { system, user } = isSplit
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget });
+
+    const systemWithLearning = learningContext ? system + "\n\n" + learningContext : system;
+    const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
+
+    let rawContent: string;
+    switch (provider) {
+      case "anthropic":
+        rawContent = await generateWithAnthropic(decryptedAiKey, systemWithLearning, user, undefined, maxTokens);
+        break;
+      case "openai":
+        rawContent = await generateWithOpenAI(decryptedAiKey, systemWithLearning, user, undefined, maxTokens);
+        break;
+      case "google":
+        rawContent = await generateWithGoogle(decryptedAiKey, systemWithLearning, user, undefined, maxTokens);
+        break;
+      default:
+        throw new Error("Unknown AI provider: " + provider);
+    }
+
+    let hookText = rawContent;
+    let replyText: string | null = null;
+
+    if (isSplit) {
+      const parsed = parseSplitPost(rawContent);
+      if (!parsed) throw new Error("Split post parse failed");
+      hookText = parsed.hook;
+      replyText = parsed.reply;
+    }
+
+    // Post to this SNS
     try {
-      if (target === "x") {
-        snsResults.x = await postToXViaCron(supabase, userId, hookText, replyText);
-      } else if (target === "threads") {
+      if (snsTarget === "x") {
+        snsResults.x = await postToXViaCron(supabase, userId, hookText, null); // X: no reply
+      } else if (snsTarget === "threads") {
         snsResults.threads = await postToThreadsViaCron(supabase, userId, hookText, replyText);
       }
     } catch (err: any) {
-      snsResults[target] = { error: err.message };
+      snsResults[snsTarget] = { error: err.message };
     }
+
+    // Keep content for DB save (use last generated)
+    savedContent = replyText ? hookText + "\n\n---\n\n" + replyText : hookText;
   }
 
-  // 8. Save post to DB
+  // 7. Save post to DB
   const { data: post } = await supabase
     .from("posts")
     .insert({
       user_id: userId,
-      content: replyText ? hookText + "\n\n---\n\n" + replyText : hookText,
+      content: savedContent,
       style_used: style,
       character_used: character,
       status: "posted",

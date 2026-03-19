@@ -81,18 +81,36 @@ export const CHARACTERS: Record<CharacterType, { label: string; description: str
 
 const BANNED_WORDS = ["定数","変数","演繹法","帰納法","抽象","構造化","フレームワーク","パラダイム","メタ認知"];
 
+// SNSプラットフォーム別の特性
+export type SnsTarget = "x" | "threads";
+
+const SNS_CONTEXT: Record<SnsTarget, string> = {
+  x: `■ プラットフォーム: X (旧Twitter)
+- 140文字が基本。短く、鋭く、一撃で刺す。
+- スクロールの手を止めさせるインパクト重視。
+- 余計な説明は省く。パンチラインで勝負。
+- 改行は最小限。`,
+  threads: `■ プラットフォーム: Threads
+- 500文字まで使える。X より深く語れる。
+- 共感・ストーリー性を大事に。
+- 段落を分けて読みやすく。
+- 最初の2行で引き込み、最後にオチや問いかけ。
+- カジュアルで親しみやすいトーン。`,
+};
+
 interface GenerateOptions {
   philosophy: Philosophy;
   style: PostStyle;
   timeOfDay: "morning" | "noon" | "night";
   postLength?: PostLength;
   character?: CharacterType;
+  snsTarget?: SnsTarget;
   customBannedWords?: string[];
   customPrompt?: string;
 }
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, postLength = "standard", character = "none", customBannedWords, customPrompt } = options;
+  const { philosophy, style, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, customPrompt } = options;
   const actualStyle = style === "mix"
     ? (["paradigm_break","provocative","flip","poison_story"] as const)[Math.floor(Math.random() * 4)]
     : style;
@@ -112,6 +130,8 @@ ${STYLE_PROMPTS[actualStyle]}
 
 ■ 時間帯トーン:
 ${TIME_TONES[timeOfDay]}
+
+${snsTarget ? SNS_CONTEXT[snsTarget] : ""}
 
 ■ 文字数:
 ${lengthConfig.prompt}
@@ -133,7 +153,7 @@ ${customPrompt ? `■ カスタム指示:\n${customPrompt}` : ""}`;
 }
 
 export function buildSplitPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, character = "none", customBannedWords, customPrompt } = options;
+  const { philosophy, style, timeOfDay, character = "none", snsTarget, customBannedWords, customPrompt } = options;
   const actualStyle = style === "mix"
     ? (["paradigm_break","provocative","flip","poison_story"] as const)[Math.floor(Math.random() * 4)]
     : style;
@@ -152,6 +172,8 @@ ${STYLE_PROMPTS[actualStyle]}
 
 ■ 時間帯トーン:
 ${TIME_TONES[timeOfDay]}
+
+${snsTarget ? SNS_CONTEXT[snsTarget] : ""}
 
 ${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
 

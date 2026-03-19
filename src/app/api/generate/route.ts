@@ -4,7 +4,7 @@ import { buildLearningContext } from "@/lib/ai/learning-context";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import type { PostStyle } from "@/types/database";
-import type { PostLength, CharacterType } from "@/lib/ai/generate-post";
+import type { PostLength, CharacterType, SnsTarget } from "@/lib/ai/generate-post";
 
 export async function POST(request: Request) {
   try {
@@ -23,11 +23,13 @@ export async function POST(request: Request) {
       postLength = "standard",
       splitMode = false,
       character = "none",
+      snsTarget = "x",
     } = body as {
       style?: PostStyle;
       postLength?: PostLength;
       splitMode?: boolean;
       character?: CharacterType;
+      snsTarget?: SnsTarget;
     };
 
     // 3. ユーザーの思想を取得
@@ -79,8 +81,8 @@ export async function POST(request: Request) {
 
     // 7. プロンプト生成
     const { system, user } = splitMode
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, character })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character });
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget });
 
     const systemWithLearning = learningContext ? system + "\n" + learningContext : system;
 
