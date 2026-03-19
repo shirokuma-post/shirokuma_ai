@@ -102,6 +102,7 @@ export async function POST(request: Request) {
           status: isSuccess ? "posted" : "failed",
           posted_at: isSuccess ? new Date().toISOString() : null,
           sns_post_ids: { [provider]: resultData },
+          error_message: isSuccess ? null : (resultData.error || null),
         });
       } catch (dbErr) {
         console.warn("Post DB save failed (non-fatal):", dbErr);

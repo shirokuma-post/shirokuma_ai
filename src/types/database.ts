@@ -65,9 +65,9 @@ export interface PostConfig {
 export interface Post {
   id: string;
   user_id: string;
-  config_id: string;
+  config_id: string | null; // null for manual posts
   content: string;
-  style_used: PostStyle;
+  style_used: PostStyle | null; // null for manual posts without style tracking
   status: PostStatus;
   scheduled_at: string | null;
   posted_at: string | null;

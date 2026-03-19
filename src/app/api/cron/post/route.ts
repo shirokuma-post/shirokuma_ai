@@ -10,6 +10,7 @@ import {
   LENGTH_CONFIGS,
   type PostLength,
   type CharacterType,
+  type SnsTarget,
 } from "@/lib/ai/generate-post";
 import type { PostStyle } from "@/types/database";
 import { buildLearningContext } from "@/lib/ai/learning-context";
@@ -18,7 +19,7 @@ import { decrypt } from "@/lib/crypto";
 // ---------- Types ----------
 interface ScheduleSlot {
   time: string;
-  target: "x" | "threads";
+  target: SnsTarget;
   style: string;
   character: string;
   length: string;
@@ -153,7 +154,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
       .select("*")
       .eq("user_id", userId);
     if (learningPosts?.length) {
-      learningContext = buildLearningContext(learningPosts) || "";
+      learningContext = buildLearningContext(learningPosts);
     }
   } catch {
     // Non-fatal
@@ -177,7 +178,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
   }
 
   // 7. Generate & post per SNS target (separately for different platforms)
-  const targets: ("x" | "threads")[] = [slot.target];
+  const targets: SnsTarget[] = [slot.target];
 
   const snsResults: Record<string, any> = {};
   let savedContent = "";
@@ -240,7 +241,6 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
       user_id: userId,
       content: savedContent,
       style_used: style,
-      character_used: character,
       status: "posted",
       posted_at: new Date().toISOString(),
       sns_post_ids: snsResults,
