@@ -295,7 +295,7 @@ export default function SettingsPage() {
                   </div>
                 ))}
                 <div className="flex items-center gap-3">
-                  <Button onClick={handleSaveXKeys} disabled={savingX || !xKeys.consumerKey.trim()}>
+                  <Button onClick={handleSaveXKeys} disabled={savingX || Object.values(xKeys).every(v => !v.trim())}>
                     {savingX ? "保存中..." : "保存する"}
                   </Button>
                   {savedX && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
