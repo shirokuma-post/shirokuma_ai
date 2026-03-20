@@ -97,11 +97,15 @@ export async function POST(request: Request) {
     }
 
     // 8. プロンプト生成
+    // ai_optimized のときは learningContext をプロンプトビルダーに直接渡す（主軸として使う）
     const { system, user } = splitMode
       ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget });
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined });
 
-    const systemWithLearning = system + (learningContext ? "\n" + learningContext : "") + recentPostsContext;
+    // ai_optimized 以外は学習データを補助的に後付け
+    const systemWithLearning = system
+      + (style !== "ai_optimized" && learningContext ? "\n" + learningContext : "")
+      + recentPostsContext;
 
     // 8. AI生成
     const maxTokens = splitMode ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);

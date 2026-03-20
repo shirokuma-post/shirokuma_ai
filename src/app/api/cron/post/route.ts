@@ -189,9 +189,11 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
 
     const { system, user } = isSplit
       ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget });
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined });
 
-    const systemWithLearning = system + (learningContext ? "\n\n" + learningContext : "") + recentPostsContext;
+    const systemWithLearning = system
+      + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
+      + recentPostsContext;
     const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
 
     let rawContent: string;

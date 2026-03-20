@@ -10,13 +10,14 @@ type UserPlan = "free" | "pro" | "business";
 type CharacterType = "none"|"gal"|"philosopher"|"housewife"|"yankee"|"sensei"|"otaku"|"gyaru_mama"|"host"|"monk"|"child";
 type SnsTarget = "x" | "threads";
 
-const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "毒舌問いかけ", flip: "ひっくり返し", poison_story: "毒入りストーリー", mix: "ミックス" };
+const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "毒舌問いかけ", flip: "ひっくり返し", poison_story: "毒入りストーリー", mix: "ミックス", ai_optimized: "AI最適化" };
 const STYLE_OPTIONS = [
   { id: "mix", name: "ミックス", desc: "4スタイルからランダム" },
   { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
   { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
   { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
   { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
+  { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
 ];
 const LENGTH_OPTIONS_X: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
   { id: "short", label: "短い", desc: "60文字前後", minPlan: "pro" },

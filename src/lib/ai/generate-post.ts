@@ -6,6 +6,7 @@ const STYLE_PROMPTS: Record<PostStyle, string> = {
   flip: "ひっくり返しスタイル: 一般的に「良い」とされていることの裏面を見せる。視点を180度変える。",
   poison_story: "毒入りストーリースタイル: 短い物語の中に毒を仕込む。最後にハッとさせるオチ。",
   mix: "上記4スタイルからランダムに選んで投稿。",
+  ai_optimized: "AI最適化スタイル: 過去に伸びた投稿の学習データを分析し、最もエンゲージメントが高いスタイル・構造・フックを自動選択して投稿を生成する。",
 };
 
 const TIME_TONES: Record<string, string> = {
@@ -162,10 +163,17 @@ interface GenerateOptions {
   snsTarget?: SnsTarget;
   customBannedWords?: string[];
   customPrompt?: string;
+  learningContext?: string;
 }
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, customPrompt } = options;
+  const { philosophy, style, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, customPrompt, learningContext } = options;
+
+  // ai_optimized: 学習データが主軸、スタイルはAIが自動選択
+  if (style === "ai_optimized") {
+    return buildAiOptimizedPrompt(options);
+  }
+
   const actualStyle = style === "mix"
     ? (["paradigm_break","provocative","flip","poison_story"] as const)[Math.floor(Math.random() * 4)]
     : style;
@@ -203,6 +211,59 @@ ${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
 ${customPrompt ? `■ カスタム指示:\n${customPrompt}` : ""}`;
 
   const user = "上記の理論体系に基づいて、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
+  return { system, user };
+}
+
+function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; user: string } {
+  const { philosophy, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, learningContext } = options;
+  const allBanned = [...BANNED_WORDS, ...(customBannedWords || [])];
+  const lengthConfig = LENGTH_CONFIGS[postLength];
+  const charConfig = CHARACTERS[character];
+  const philosophyContext = getPhilosophyContext(philosophy);
+
+  const styleOptions = `利用可能なスタイル:
+1. 常識破壊: みんなが信じている「当たり前」をぶっ壊す
+2. 毒舌問いかけ: 読んだ人が「うっ…」と胸に刺さる問い
+3. ひっくり返し: 視点を180度変える
+4. 毒入りストーリー: 短い物語に毒を仕込む`;
+
+  const hasLearning = learningContext && learningContext.trim().length > 0;
+
+  const system = `あなたは、独自の理論体系を持つ思考リーダーのSNS投稿を代筆する最適化AIライターです。
+
+${philosophyContext}
+
+${hasLearning ? `■ 【最重要】学習データ（過去に伸びた投稿の分析）:
+${learningContext}
+
+上記の学習データを最優先で参考にしてください。伸びた投稿のパターン（構造、フック、トーン、テクニック）を分析し、最もエンゲージメントが高くなるスタイルと構造を自動で選択してください。` : `■ AI最適化モード:
+学習データがまだありません。以下のスタイルから、この思想・時間帯・プラットフォームに最も効果的なものを自動選択してください。`}
+
+${styleOptions}
+
+■ 時間帯トーン:
+${TIME_TONES[timeOfDay]}
+
+${snsTarget ? SNS_CONTEXT[snsTarget] : ""}
+
+■ 文字数:
+${lengthConfig.prompt}
+
+${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
+
+■ ルール:
+- 中学生でもわかる言葉で書く
+- 以下の言葉は絶対に使わない: ${allBanned.join("、")}
+- ハッシュタグは使わない
+- 「〜しましょう」「〜ですよね」など禁止
+- 断言する。問いかけるなら鋭く
+- 読んだ人が「うわ、マジか」と思うインパクトを最優先
+- 武器（フレームワーク）があれば、それを使った切り口で攻めろ
+- 学習パターンの「本質」を活かすこと。表現のコピーではなく、勝因の再現を狙う`;
+
+  const user = hasLearning
+    ? "学習データの勝ちパターンを最大限活用して、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。"
+    : "この思想と時間帯に最適なスタイルを選んで、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
   return { system, user };
 }
 

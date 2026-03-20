@@ -25,6 +25,7 @@ const STYLES = [
   { id: "provocative", label: "毒舌問いかけ" },
   { id: "flip", label: "ひっくり返し" },
   { id: "poison_story", label: "毒入りストーリー" },
+  { id: "ai_optimized", label: "AI最適化" },
 ];
 
 const CHARACTERS = [
