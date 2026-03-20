@@ -53,11 +53,12 @@ const TARGETS = [
   { id: "threads" as const, label: "Threads" },
 ];
 
-const DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
+const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
-  const [slots, setSlots] = useState<Slot[]>([{ ...DEFAULT_SLOT, time: "07:00" }]);
+  const [slots, setSlots] = useState<Slot[]>([{ ...INITIAL_DEFAULT_SLOT, time: "07:00" }]);
+  const [defaultSlot, setDefaultSlot] = useState<Slot>(INITIAL_DEFAULT_SLOT);
   const [expandedSlot, setExpandedSlot] = useState<number | null>(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -65,7 +66,24 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
 
-  useEffect(() => { fetchSchedule(); fetchPlan(); }, []);
+  useEffect(() => { fetchSchedule(); fetchPlan(); fetchStyleDefaults(); }, []);
+
+  async function fetchStyleDefaults() {
+    try {
+      const res = await fetch("/api/style-defaults");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.defaults) {
+          const newDefault: Slot = {
+            ...INITIAL_DEFAULT_SLOT,
+            style: data.defaults.style || "mix",
+            character: data.defaults.character || "none",
+          };
+          setDefaultSlot(newDefault);
+        }
+      }
+    } catch {}
+  }
 
   async function fetchPlan() {
     try {
@@ -121,7 +139,7 @@ export default function SchedulePage() {
   }
 
   function addSlot() {
-    setSlots(prev => [...prev, { ...DEFAULT_SLOT }]);
+    setSlots(prev => [...prev, { ...defaultSlot }]);
     setExpandedSlot(slots.length);
   }
 

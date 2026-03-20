@@ -46,7 +46,7 @@ export default function PostsPage() {
   // --- SNS tab ---
   const [snsTab, setSnsTab] = useState<SnsTarget>("x");
 
-  // --- Per-SNS settings ---
+  // --- Per-SNS settings (デフォルト設定から初期化) ---
   const [xStyle, setXStyle] = useState("mix");
   const [xLength, setXLength] = useState<PostLength>("standard");
   const [xCharacter, setXCharacter] = useState<CharacterType>("none");
@@ -55,6 +55,8 @@ export default function PostsPage() {
   const [thLength, setThLength] = useState<PostLength>("standard");
   const [thCharacter, setThCharacter] = useState<CharacterType>("none");
   const [thSplitMode, setThSplitMode] = useState(false);
+
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
 
   // --- Shared state ---
   const [generating, setGenerating] = useState(false);
@@ -96,7 +98,23 @@ export default function PostsPage() {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { fetchPosts(1); fetchStats(); }, [fetchPosts, fetchStats]);
+  useEffect(() => { fetchPosts(1); fetchStats(); fetchStyleDefaults(); }, [fetchPosts, fetchStats]);
+
+  async function fetchStyleDefaults() {
+    try {
+      const res = await fetch("/api/style-defaults");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.defaults) {
+          const s = data.defaults.style || "mix";
+          const c = (data.defaults.character || "none") as CharacterType;
+          setXStyle(s); setThStyle(s);
+          setXCharacter(c); setThCharacter(c);
+        }
+        setDefaultsLoaded(true);
+      }
+    } catch { setDefaultsLoaded(true); }
+  }
 
   async function handleGenerate() {
     if (limitReached) return;

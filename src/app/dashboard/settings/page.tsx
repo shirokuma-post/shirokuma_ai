@@ -502,17 +502,12 @@ export default function SettingsPage() {
                       { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
                       { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
                       { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
-                      { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化", badge: "NEW" as const },
+                      { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
                       ...customStyles.map(cs => ({ id: cs.id, name: cs.name, desc: cs.desc })),
                     ].map((s) => (
                       <button key={s.id} onClick={() => setPostStyle(s.id)}
                         className={`p-3 rounded-lg border text-left transition-colors ${postStyle === s.id ? "border-brand-500 bg-brand-50" : "border-gray-200 hover:border-gray-300"}`}>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium text-gray-900">{s.name}</p>
-                          {"badge" in s && s.badge && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full font-bold">{s.badge}</span>
-                          )}
-                        </div>
+                        <p className="text-sm font-medium text-gray-900">{s.name}</p>
                         <p className="text-xs text-gray-500 mt-0.5">{s.desc}</p>
                       </button>
                     ))}
