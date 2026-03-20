@@ -25,6 +25,7 @@ export interface Profile {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   stripe_subscription_status: string | null;
+  style_defaults: Record<string, any> | null;
   created_at: string;
   updated_at: string;
 }

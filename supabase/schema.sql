@@ -22,6 +22,7 @@ CREATE TABLE public.profiles (
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   stripe_subscription_status TEXT DEFAULT 'none',
+  style_defaults JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

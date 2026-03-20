@@ -21,7 +21,17 @@ export default function SettingsPage() {
   const [xKeys, setXKeys] = useState({ consumerKey: "", consumerSecret: "", accessToken: "", accessTokenSecret: "" });
   const [threadsKeys, setThreadsKeys] = useState({ accessToken: "", userId: "" });
   const [postStyle, setPostStyle] = useState("mix");
-  const [scheduleTimes, setScheduleTimes] = useState(["07:00", "12:30", "21:00"]);
+  const [character, setCharacter] = useState("none");
+  const [userPlan, setUserPlan] = useState("free");
+  const [customStyles, setCustomStyles] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
+  const [customCharacters, setCustomCharacters] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
+  const [savingStyle, setSavingStyle] = useState(false);
+  const [savedStyle, setSavedStyle] = useState(false);
+  const [testGenerating, setTestGenerating] = useState(false);
+  const [testResult, setTestResult] = useState("");
+  const [testSns, setTestSns] = useState<"x" | "threads">("x");
+  const [showCustomForm, setShowCustomForm] = useState<"style" | "character" | null>(null);
+  const [customForm, setCustomForm] = useState({ name: "", desc: "", prompt: "" });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
@@ -38,12 +48,21 @@ export default function SettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [phRes, keyRes] = await Promise.all([
+        const [phRes, keyRes, styleRes] = await Promise.all([
           fetch("/api/philosophy"),
           fetch("/api/apikeys"),
+          fetch("/api/style-defaults"),
         ]);
         const phData = await phRes.json();
         const keyData = await keyRes.json();
+        const styleData = await styleRes.json();
+        if (styleData.defaults) {
+          setPostStyle(styleData.defaults.style || "mix");
+          setCharacter(styleData.defaults.character || "none");
+          setCustomStyles(styleData.defaults.customStyles || []);
+          setCustomCharacters(styleData.defaults.customCharacters || []);
+        }
+        if (styleData.plan) setUserPlan(styleData.plan);
         if (phData.philosophy) {
           setPhilosophyTitle(phData.philosophy.title);
           setPhilosophyText(phData.philosophy.content);
@@ -154,6 +173,44 @@ export default function SettingsPage() {
     setSavingThreads(false);
   }
 
+  async function handleSaveStyleDefaults() {
+    setSavingStyle(true); setSavedStyle(false);
+    try {
+      const res = await fetch("/api/style-defaults", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style: postStyle, character, customStyles, customCharacters }),
+      });
+      if (!res.ok) { alert("保存に失敗: " + (await res.json()).error); setSavingStyle(false); return; }
+      setSavedStyle(true); setTimeout(() => setSavedStyle(false), 3000);
+    } catch (e: any) { alert("保存に失敗: " + e.message); }
+    setSavingStyle(false);
+  }
+
+  async function handleTestGenerate() {
+    setTestGenerating(true); setTestResult("");
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ style: postStyle, character, snsTarget: testSns }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setTestResult("エラー: " + (data.error || "生成失敗")); }
+      else { setTestResult(data.content); }
+    } catch (e: any) { setTestResult("エラー: " + e.message); }
+    setTestGenerating(false);
+  }
+
+  function handleAddCustom(type: "style" | "character") {
+    if (!customForm.name.trim() || !customForm.prompt.trim()) return;
+    const item = { id: Date.now().toString(), name: customForm.name, desc: customForm.desc, prompt: customForm.prompt };
+    if (type === "style") setCustomStyles(prev => [...prev, item]);
+    else setCustomCharacters(prev => [...prev, item]);
+    setCustomForm({ name: "", desc: "", prompt: "" });
+    setShowCustomForm(null);
+  }
+
   async function handleStructure() {
     setStructuring(true);
     try {
@@ -197,7 +254,7 @@ export default function SettingsPage() {
   const tabs = [
     { id: "philosophy" as const, label: "マイコンセプト" },
     { id: "apikeys" as const, label: "APIキー (BYOK)" },
-    { id: "style" as const, label: "投稿スタイル" },
+    { id: "style" as const, label: "デフォルトスタイル" },
   ];
 
   const checkIcon = (
@@ -427,53 +484,193 @@ export default function SettingsPage() {
       )}
 
       {activeTab === "style" && (
-        <Card>
-          <CardHeader>
-            <h2 className="font-semibold text-gray-900">投稿スタイル & スケジュール</h2>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">投稿スタイル</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: "mix", name: "ミックス", desc: "4スタイルからランダム" },
-                    { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
-                    { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
-                    { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
-                    { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
-                  ].map((style) => (
-                    <button key={style.id} onClick={() => setPostStyle(style.id)}
-                      className={`p-3 rounded-lg border text-left transition-colors ${postStyle === style.id ? "border-brand-500 bg-brand-50" : "border-gray-200 hover:border-gray-300"}`}>
-                      <p className="text-sm font-medium text-gray-900">{style.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{style.desc}</p>
+        <div className="space-y-6">
+          {/* デフォルト投稿スタイル */}
+          <Card>
+            <CardHeader>
+              <h2 className="font-semibold text-gray-900">デフォルト投稿スタイル</h2>
+              <p className="text-sm text-gray-500 mt-1">投稿ページやスケジュールの初期値として使われます</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">スタイル</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "mix", name: "ミックス", desc: "4スタイルからランダム" },
+                      { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
+                      { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
+                      { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
+                      { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
+                      ...customStyles.map(cs => ({ id: cs.id, name: cs.name, desc: cs.desc })),
+                    ].map((s) => (
+                      <button key={s.id} onClick={() => setPostStyle(s.id)}
+                        className={`p-3 rounded-lg border text-left transition-colors ${postStyle === s.id ? "border-brand-500 bg-brand-50" : "border-gray-200 hover:border-gray-300"}`}>
+                        <p className="text-sm font-medium text-gray-900">{s.name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{s.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">キャラ設定</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "none", name: "なし", desc: "キャラなし（デフォルト）" },
+                      { id: "gal", name: "ギャル", desc: "ノリで真理を突く" },
+                      { id: "philosopher", name: "哲学者", desc: "静かに深く問う" },
+                      { id: "housewife", name: "主婦", desc: "生活者目線で鋭く" },
+                      { id: "yankee", name: "元ヤン", desc: "荒いけど筋が通る" },
+                      { id: "sensei", name: "熱血教師", desc: "熱く語りかける" },
+                      { id: "otaku", name: "オタク", desc: "早口で本質を突く" },
+                      { id: "gyaru_mama", name: "ギャルママ", desc: "軽いのに深い" },
+                      { id: "host", name: "ホスト", desc: "甘い言葉に毒" },
+                      { id: "monk", name: "坊主", desc: "悟りから冷静に" },
+                      { id: "child", name: "子ども", desc: "無邪気に刺す" },
+                      ...customCharacters.map(cc => ({ id: cc.id, name: cc.name, desc: cc.desc })),
+                    ].map((c) => (
+                      <button key={c.id} onClick={() => setCharacter(c.id)}
+                        className={`p-2.5 rounded-lg border text-left transition-colors ${character === c.id ? "border-brand-500 bg-brand-50" : "border-gray-200 hover:border-gray-300"}`}>
+                        <p className="text-sm font-medium text-gray-900">{c.name}</p>
+                        <p className="text-xs text-gray-500">{c.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSaveStyleDefaults} disabled={savingStyle}>
+                    {savingStyle ? "保存中..." : "保存する"}
+                  </Button>
+                  {savedStyle && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* カスタムスタイル・キャラ（Pro以上） */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">オリジナル設定</h2>
+                  <p className="text-sm text-gray-500 mt-1">自分だけのスタイルやキャラを作成</p>
+                </div>
+                {userPlan === "free" && (
+                  <span className="text-xs px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full">Pro プラン以上</span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {userPlan === "free" ? (
+                <p className="text-sm text-gray-500">Proプラン以上にアップグレードすると、オリジナルの投稿スタイルやキャラ設定を作成できます。</p>
+              ) : (
+                <div className="space-y-4">
+                  {/* 既存カスタム一覧 */}
+                  {customStyles.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">カスタムスタイル</p>
+                      <div className="space-y-2">
+                        {customStyles.map((cs, i) => (
+                          <div key={cs.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{cs.name}</p>
+                              <p className="text-xs text-gray-500">{cs.desc}</p>
+                            </div>
+                            <button onClick={() => setCustomStyles(prev => prev.filter((_, j) => j !== i))}
+                              className="text-gray-400 hover:text-red-500 text-xs">削除</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {customCharacters.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">カスタムキャラ</p>
+                      <div className="space-y-2">
+                        {customCharacters.map((cc, i) => (
+                          <div key={cc.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{cc.name}</p>
+                              <p className="text-xs text-gray-500">{cc.desc}</p>
+                            </div>
+                            <button onClick={() => setCustomCharacters(prev => prev.filter((_, j) => j !== i))}
+                              className="text-gray-400 hover:text-red-500 text-xs">削除</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 追加フォーム */}
+                  {showCustomForm ? (
+                    <div className="p-4 border border-gray-200 rounded-lg space-y-3">
+                      <p className="text-sm font-medium text-gray-900">
+                        {showCustomForm === "style" ? "カスタムスタイル追加" : "カスタムキャラ追加"}
+                      </p>
+                      <input type="text" placeholder="名前（例: 皮肉屋）" value={customForm.name}
+                        onChange={e => setCustomForm(p => ({ ...p, name: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <input type="text" placeholder="説明（例: 冷笑的に真実を語る）" value={customForm.desc}
+                        onChange={e => setCustomForm(p => ({ ...p, desc: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                      <textarea placeholder="AIへの指示プロンプト（例: 皮肉を込めた口調で、世の中の矛盾を鋭く指摘する...）"
+                        value={customForm.prompt} onChange={e => setCustomForm(p => ({ ...p, prompt: e.target.value }))}
+                        rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none" />
+                      <div className="flex gap-2">
+                        <Button onClick={() => handleAddCustom(showCustomForm)} disabled={!customForm.name.trim() || !customForm.prompt.trim()}>
+                          追加
+                        </Button>
+                        <Button variant="secondary" onClick={() => { setShowCustomForm(null); setCustomForm({ name: "", desc: "", prompt: "" }); }}>
+                          キャンセル
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button variant="secondary" onClick={() => setShowCustomForm("style")}>+ スタイル追加</Button>
+                      <Button variant="secondary" onClick={() => setShowCustomForm("character")}>+ キャラ追加</Button>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-400">追加後「保存する」を押すと反映されます（最大各5個）</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 確認生成 */}
+          <Card>
+            <CardHeader>
+              <h2 className="font-semibold text-gray-900">テスト生成</h2>
+              <p className="text-sm text-gray-500 mt-1">現在の設定で投稿をプレビュー（実際には投稿されません）</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  {(["x", "threads"] as const).map(sns => (
+                    <button key={sns} onClick={() => setTestSns(sns)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        testSns === sns ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                      }`}>
+                      {sns === "x" ? "X" : "Threads"}
                     </button>
                   ))}
                 </div>
+                <Button onClick={handleTestGenerate} disabled={testGenerating}>
+                  {testGenerating ? "生成中..." : "テスト生成"}
+                </Button>
+                {testResult && (
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-xs text-gray-500 mb-2">プレビュー（{testSns === "x" ? "X" : "Threads"}向け）</p>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{testResult}</p>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">自動投稿スケジュール (JST)</label>
-                <div className="flex flex-wrap gap-2">
-                  {scheduleTimes.map((time, i) => (
-                    <div key={i} className="flex items-center gap-1">
-                      <input type="time" value={time}
-                        onChange={(e) => { const next = [...scheduleTimes]; next[i] = e.target.value; setScheduleTimes(next); }}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
-                      {scheduleTimes.length > 1 && (
-                        <button onClick={() => setScheduleTimes(scheduleTimes.filter((_, j) => j !== i))} className="p-1 text-gray-400 hover:text-red-500">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button onClick={() => setScheduleTimes([...scheduleTimes, "18:00"])}
-                    className="px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-600">+ 追加</button>
-                </div>
-              </div>
-              <Button>保存する</Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
