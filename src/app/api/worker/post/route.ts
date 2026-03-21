@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { Receiver } from "@upstash/qstash";
 import {
   buildPrompt,
   buildSplitPrompt,
@@ -39,21 +40,59 @@ function getServiceClient() {
   );
 }
 
+// ---------- QStash 署名検証 ----------
+async function verifyQStashSignature(request: Request, body: string): Promise<boolean> {
+  const signingKeys = process.env.QSTASH_CURRENT_SIGNING_KEY;
+  const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
+
+  if (!signingKeys || !nextSigningKey) return false;
+
+  try {
+    const receiver = new Receiver({
+      currentSigningKey: signingKeys,
+      nextSigningKey: nextSigningKey,
+    });
+
+    const signature = request.headers.get("upstash-signature") || "";
+    const isValid = await receiver.verify({
+      signature,
+      body,
+    });
+    return isValid;
+  } catch {
+    return false;
+  }
+}
+
 // =============================================================
 // Worker: 1ユーザー × 1スロットの投稿処理
-// Dispatcher（/api/cron/post）から呼び出される
+// QStash または Dispatcher（/api/cron/post）から呼び出される
 // =============================================================
 export async function POST(request: Request) {
-  // 認証: CRON_SECRET
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // リクエストボディを先に読む（署名検証に必要）
+  const rawBody = await request.text();
+
+  // 認証: QStash 署名検証を優先、フォールバックで CRON_SECRET
+  const hasQStashSignature = request.headers.has("upstash-signature");
+
+  if (hasQStashSignature) {
+    const isValid = await verifyQStashSignature(request, rawBody);
+    if (!isValid) {
+      console.error("[WORKER] QStash signature verification failed");
+      return NextResponse.json({ error: "Invalid QStash signature" }, { status: 401 });
+    }
+  } else {
+    // フォールバック: CRON_SECRET（ローカル開発 / 直接呼び出し）
+    const authHeader = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   let payload: WorkerPayload;
   try {
-    payload = await request.json();
+    payload = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }

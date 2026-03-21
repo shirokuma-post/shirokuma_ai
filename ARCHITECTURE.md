@@ -290,21 +290,23 @@ CRON_SECRET=                  # cron エンドポイント認証
 
 ---
 
-## 自動投稿（スケジュール）— Dispatcher + Worker パターン
+## 自動投稿（スケジュール）— Dispatcher + Worker + QStash
 
-Vercel 等のサーバーレス環境ではタイムアウト制限（Hobby: 10秒、Pro: 60秒）があるため、
-cron が全ユーザーを直列処理するとユーザー数増加でタイムアウトする。
-これを回避するため **Dispatcher + Worker** パターンを採用。
+Vercel 等のサーバーレス環境ではタイムアウト制限があるため、
+cron が全ユーザーを直列処理するとタイムアウトする。
+**Dispatcher + Worker** パターンに加え、**Upstash QStash** をメッセージキューとして採用。
 
 ```
-外部 cron → /api/cron/post (Dispatcher)
-               │  対象スロットを洗い出し（数秒で完了）
-               │
-               ├── fetch → /api/worker/post { userId: A, slot: {...} }
-               ├── fetch → /api/worker/post { userId: B, slot: {...} }
-               └── fetch → /api/worker/post { userId: C, slot: {...} }
+Vercel Cron → /api/cron/post (Dispatcher)
+                │  対象スロットを洗い出し（数秒で完了）
+                │
+                ├── QStash.publishJSON → /api/worker/post { userId: A, slot }
+                ├── QStash.publishJSON → /api/worker/post { userId: B, slot }
+                └── QStash.publishJSON → /api/worker/post { userId: C, slot }
                               │
-                              └── 1ユーザー × 1スロットの処理
+                     QStash が配信保証・自動リトライ（3回）
+                              │
+                              └── Worker: 1ユーザー × 1スロット
                                   AI生成 → SNS投稿 → DB保存（10〜15秒）
 ```
 
@@ -313,22 +315,23 @@ cron が全ユーザーを直列処理するとユーザー数増加でタイム
 2. `schedule_configs` から enabled=true を取得
 3. 現在時刻にマッチするスロットを特定（±4分の窓）
 4. 今日すでに実行済みのスロットはスキップ
-5. 各タスクを `/api/worker/post` に並列 fetch で発火（3秒タイムアウト = 送信確認のみ）
-6. 結果サマリーを返して終了
+5. `QSTASH_TOKEN` がある場合 → QStash にパブリッシュ（配信保証・リトライ付き）
+6. `QSTASH_TOKEN` がない場合 → 直接 fetch フォールバック（ローカル開発用）
 
 ### Worker（`/api/worker/post` — POST）
-1. `CRON_SECRET` で認証
+1. 認証: QStash 署名検証（`upstash-signature` ヘッダー）を優先、フォールバックで `CRON_SECRET`
 2. payload: `{ userId, slot }` を受け取る
 3. 1ユーザー × 1スロット分の処理を実行:
    - コンセプト取得 → AI キー取得・復号 → 学習データ取得
    - AI 生成 → SNS 投稿 → posts テーブルに保存
    - schedule_executions にログ記録 → daily_post_count をインクリメント
-4. 失敗時は schedule_executions に error を記録
+4. 失敗時は schedule_executions に error を記録（QStash が自動リトライ）
 
-### スケーラビリティ
-- Dispatcher は対象が 100 人でも数秒で完了（fetch を投げるだけ）
-- Worker は 1 回 10〜15 秒で収まるため Vercel Pro の 60 秒制限内
-- 将来的に外部キュー（QStash / Inngest）に切り替え可能（Worker の URL を向け先にするだけ）
+### QStash のメリット
+- **配信保証**: メッセージが確実に Worker に届く
+- **自動リトライ**: Worker が失敗しても最大3回再送
+- **同時実行制限なし**: Vercel の自己呼び出し制限を回避
+- **無料枠**: 月10万メッセージまで無料
 
 ---
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { Client } from "@upstash/qstash";
 import type { SnsTarget } from "@/lib/ai/generate-post";
 
 // ---------- Types ----------
@@ -21,8 +22,8 @@ function getServiceClient() {
 }
 
 // =============================================================
-// Dispatcher: 対象スロットを洗い出して Worker を個別呼び出し
-// 自身は数秒で完了するのでタイムアウトしない
+// Dispatcher: 対象スロットを洗い出して QStash 経由で Worker を呼び出し
+// QStash がリトライ・配信保証を担当するので Dispatcher は数秒で完了
 // =============================================================
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -87,45 +88,64 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: "No matching slots", dispatched: 0, time: currentTime });
     }
 
-    // 3. Fire-and-forget: Worker を個別呼び出し
+    // 3. QStash でタスクをキューイング
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const workerUrl = `${appUrl}/api/worker/post`;
+    const qstashToken = process.env.QSTASH_TOKEN;
 
     const dispatched: { userId: string; time: string; target: string }[] = [];
     const dispatchErrors: { userId: string; time: string; error: string }[] = [];
 
-    // 並列で発火（レスポンスは待たない = fire-and-forget）
-    const promises = tasks.map(async (task) => {
-      try {
-        // fetch を投げるが await しない...と思いきや、
-        // Vercel では関数終了後にリクエストが中断されるため、
-        // fetch の開始だけは確認する必要がある。
-        // → Promise.allSettled で「送信完了」まで待ち、Worker 側の処理完了は待たない。
-        const res = await fetch(workerUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${cronSecret}`,
-          },
-          body: JSON.stringify({ userId: task.userId, slot: task.slot }),
-          // @ts-ignore — Next.js extended fetch option
-          signal: AbortSignal.timeout(3000), // 3秒で送信確認。Worker の完了は待たない。
-        });
+    if (qstashToken) {
+      // --- QStash モード（本番） ---
+      const qstash = new Client({ token: qstashToken });
 
-        // レスポンスコードだけ確認（Worker の処理完了は不要）
-        dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
-      } catch (err: any) {
-        // タイムアウト = Worker に届いて処理中（正常）
-        if (err.name === "AbortError" || err.name === "TimeoutError") {
+      const promises = tasks.map(async (task) => {
+        try {
+          await qstash.publishJSON({
+            url: workerUrl,
+            body: { userId: task.userId, slot: task.slot },
+            retries: 3,
+            // QStash が Worker を呼ぶときのヘッダー（Worker 側で検証）
+          });
           dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
-        } else {
-          console.error(`[CRON/DISPATCHER] Failed to dispatch for user ${task.userId}:`, err.message);
+        } catch (err: any) {
+          console.error(`[CRON/DISPATCHER] QStash publish failed for user ${task.userId}:`, err.message);
           dispatchErrors.push({ userId: task.userId, time: task.slot.time, error: err.message });
         }
-      }
-    });
+      });
 
-    await Promise.allSettled(promises);
+      await Promise.allSettled(promises);
+    } else {
+      // --- フォールバック: 直接 fetch（ローカル開発 / QStash 未設定時） ---
+      console.warn("[CRON/DISPATCHER] QSTASH_TOKEN not set, falling back to direct fetch");
+
+      const promises = tasks.map(async (task) => {
+        try {
+          const res = await fetch(workerUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${cronSecret}`,
+            },
+            body: JSON.stringify({ userId: task.userId, slot: task.slot }),
+            // @ts-ignore — Next.js extended fetch
+            signal: AbortSignal.timeout(3000),
+          });
+          dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
+        } catch (err: any) {
+          // タイムアウト = Worker に届いて処理中（正常）
+          if (err.name === "AbortError" || err.name === "TimeoutError") {
+            dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
+          } else {
+            console.error(`[CRON/DISPATCHER] Direct fetch failed for user ${task.userId}:`, err.message);
+            dispatchErrors.push({ userId: task.userId, time: task.slot.time, error: err.message });
+          }
+        }
+      });
+
+      await Promise.allSettled(promises);
+    }
 
     console.log(`[CRON/DISPATCHER] Dispatched ${dispatched.length} tasks, ${dispatchErrors.length} errors`);
 
@@ -133,6 +153,7 @@ export async function GET(request: Request) {
       message: "Dispatch completed",
       dispatched: dispatched.length,
       errors: dispatchErrors.length,
+      mode: qstashToken ? "qstash" : "direct",
       time: currentTime,
       details: { dispatched, errors: dispatchErrors },
     });

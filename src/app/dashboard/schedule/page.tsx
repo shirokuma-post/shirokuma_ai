@@ -57,9 +57,9 @@ const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", c
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
-  const [slots, setSlots] = useState<Slot[]>([{ ...INITIAL_DEFAULT_SLOT, time: "07:00" }]);
+  const [slots, setSlots] = useState<Slot[]>([]);
   const [defaultSlot, setDefaultSlot] = useState<Slot>(INITIAL_DEFAULT_SLOT);
-  const [expandedSlot, setExpandedSlot] = useState<number | null>(0);
+  const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [executions, setExecutions] = useState<Execution[]>([]);
@@ -180,6 +180,12 @@ export default function SchedulePage() {
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700">投稿スロット<span className="ml-2 text-xs text-gray-400">{slots.length} / {maxSlots === -1 ? "∞" : maxSlots}枠</span></label>
             </div>
+
+            {slots.length === 0 && (
+              <div className="text-center py-6 text-gray-400">
+                <p className="text-sm">スロットがありません。下のボタンから追加してください。</p>
+              </div>
+            )}
 
             {slots.map((slot, i) => {
               const isExpanded = expandedSlot === i;
