@@ -77,7 +77,7 @@ CREATE TABLE public.posts (
   content TEXT NOT NULL,
   style_used TEXT,                -- nullable: 手動投稿では未設定の場合あり
   status TEXT NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft', 'scheduled', 'posted', 'failed')),
+    CHECK (status IN ('draft', 'scheduled', 'posted', 'failed', 'pending_approval')),
   scheduled_at TIMESTAMPTZ,
   posted_at TIMESTAMPTZ,
   sns_post_ids JSONB,             -- { "x": {...}, "threads": {...} }
@@ -98,6 +98,8 @@ CREATE TABLE public.schedule_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   enabled BOOLEAN NOT NULL DEFAULT false,
+  require_approval BOOLEAN NOT NULL DEFAULT false,
+  trend_enabled BOOLEAN NOT NULL DEFAULT false,
   slots JSONB NOT NULL DEFAULT '[]'::jsonb,
   timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -144,7 +146,23 @@ CREATE INDEX idx_learning_posts_user
   ON public.learning_posts(user_id, created_at DESC);
 
 -- =====================================================
--- 8. RLS Policies
+-- 8. Daily Trends（RSSトレンドキャッシュ）
+-- =====================================================
+CREATE TABLE public.daily_trends (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  category TEXT NOT NULL DEFAULT 'general',
+  title TEXT NOT NULL,
+  summary TEXT,
+  source_url TEXT,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_daily_trends_fetched
+  ON public.daily_trends(fetched_at DESC);
+
+-- =====================================================
+-- 9. RLS Policies
 -- =====================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
@@ -153,6 +171,7 @@ ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_executions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.learning_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_trends ENABLE ROW LEVEL SECURITY;
 
 -- ユーザー自身のデータのみ操作可能
 CREATE POLICY "Users manage own profile"
@@ -169,6 +188,9 @@ CREATE POLICY "Users view own executions"
   ON public.schedule_executions FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users manage own learning posts"
   ON public.learning_posts FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Anyone can read trends"
+  ON public.daily_trends FOR SELECT USING (true);
 
 -- service_role用（cronハンドラー）
 CREATE POLICY "Service can read all schedules"

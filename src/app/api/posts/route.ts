@@ -14,11 +14,18 @@ export async function GET(request: Request) {
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
+    const statusFilter = url.searchParams.get("status");
 
-    const { data: posts, error, count } = await supabase
+    let query = supabase
       .from("posts")
       .select("*", { count: "exact" })
-      .eq("user_id", user.id)
+      .eq("user_id", user.id);
+
+    if (statusFilter) {
+      query = query.eq("status", statusFilter);
+    }
+
+    const { data: posts, error, count } = await query
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

@@ -30,6 +30,8 @@ interface ScheduleSlot {
 interface WorkerPayload {
   userId: string;
   slot: ScheduleSlot;
+  requireApproval?: boolean;
+  trendEnabled?: boolean;
 }
 
 // ---------- Service client (bypasses RLS) ----------
@@ -97,7 +99,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { userId, slot } = payload;
+  const { userId, slot, requireApproval, trendEnabled } = payload;
   if (!userId || !slot) {
     return NextResponse.json({ error: "Missing userId or slot" }, { status: 400 });
   }
@@ -105,7 +107,7 @@ export async function POST(request: Request) {
   const supabase = getServiceClient();
 
   try {
-    await processSlot(supabase, userId, slot);
+    await processSlot(supabase, userId, slot, requireApproval, trendEnabled);
     return NextResponse.json({ success: true, userId, time: slot.time, target: slot.target });
   } catch (err: any) {
     console.error(`[WORKER] Error for user ${userId} slot ${slot.time}:`, err.message);
@@ -123,7 +125,7 @@ export async function POST(request: Request) {
 }
 
 // ---------- Process a single slot ----------
-async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
+async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, requireApproval?: boolean, trendEnabled?: boolean) {
   // 1. Get user's philosophy
   const { data: philosophy } = await supabase
     .from("philosophies")
@@ -169,6 +171,24 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
     // Non-fatal
   }
 
+  // 5.5. Get trend context (if enabled)
+  let trendContext = "";
+  if (trendEnabled) {
+    try {
+      const { data: trends } = await supabase
+        .from("daily_trends")
+        .select("title, summary")
+        .order("fetched_at", { ascending: false })
+        .limit(5);
+      if (trends?.length) {
+        const trendList = trends.map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
+        trendContext = `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${trendList}`;
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
   // 6. Get recent posts for dedup
   let recentPostsContext = "";
   try {
@@ -196,6 +216,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
 
   const systemWithLearning = system
     + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
+    + trendContext
     + recentPostsContext;
   const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
 
@@ -224,7 +245,35 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
     replyText = parsed.reply;
   }
 
-  // 8. Post to SNS
+  const savedContent = replyText ? hookText + "\n\n---\n\n" + replyText : hookText;
+
+  // 8. 承認ワークフロー: require_approval なら SNS に投稿せず pending_approval で保存
+  if (requireApproval) {
+    const { data: post } = await supabase
+      .from("posts")
+      .insert({
+        user_id: userId,
+        content: savedContent,
+        style_used: style,
+        status: "pending_approval",
+        ai_model_used: provider,
+      })
+      .select()
+      .single();
+
+    await supabase.from("schedule_executions").insert({
+      user_id: userId,
+      scheduled_time: slot.time,
+      status: "success",
+      post_id: post?.id,
+      sns_results: { approval_pending: true },
+    });
+
+    console.log(`[WORKER] Pending approval for user ${userId} at ${slot.time}`);
+    return;
+  }
+
+  // 9. Post to SNS
   const snsResults: Record<string, any> = {};
   try {
     if (snsTarget === "x") {
@@ -236,9 +285,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
     snsResults[snsTarget] = { error: err.message };
   }
 
-  const savedContent = replyText ? hookText + "\n\n---\n\n" + replyText : hookText;
-
-  // 9. Save post to DB
+  // 10. Save post to DB
   const { data: post } = await supabase
     .from("posts")
     .insert({
@@ -253,7 +300,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
     .select()
     .single();
 
-  // 10. Record execution
+  // 11. Record execution
   await supabase.from("schedule_executions").insert({
     user_id: userId,
     scheduled_time: slot.time,
@@ -262,7 +309,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot) {
     sns_results: snsResults,
   });
 
-  // 11. Increment daily count
+  // 12. Increment daily count
   const { data: profile } = await supabase
     .from("profiles")
     .select("daily_post_count")

@@ -55,10 +55,12 @@ export async function GET(request: Request) {
     }
 
     // 2. Collect tasks to dispatch
-    const tasks: { userId: string; slot: ScheduleSlot }[] = [];
+    const tasks: { userId: string; slot: ScheduleSlot; requireApproval: boolean; trendEnabled: boolean }[] = [];
 
     for (const config of configs) {
       const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
+      const requireApproval = config.require_approval ?? false;
+      const trendEnabled = config.trend_enabled ?? false;
 
       // Find slots matching current time (within 5 min window)
       const matchedSlots = slots.filter((slot) => {
@@ -80,7 +82,7 @@ export async function GET(request: Request) {
 
         if (existing && existing.length > 0) continue;
 
-        tasks.push({ userId: config.user_id, slot });
+        tasks.push({ userId: config.user_id, slot, requireApproval, trendEnabled });
       }
     }
 
@@ -104,7 +106,7 @@ export async function GET(request: Request) {
         try {
           await qstash.publishJSON({
             url: workerUrl,
-            body: { userId: task.userId, slot: task.slot },
+            body: { userId: task.userId, slot: task.slot, requireApproval: task.requireApproval, trendEnabled: task.trendEnabled },
             retries: 3,
             // QStash が Worker を呼ぶときのヘッダー（Worker 側で検証）
           });
@@ -128,7 +130,7 @@ export async function GET(request: Request) {
               "Content-Type": "application/json",
               Authorization: `Bearer ${cronSecret}`,
             },
-            body: JSON.stringify({ userId: task.userId, slot: task.slot }),
+            body: JSON.stringify({ userId: task.userId, slot: task.slot, requireApproval: task.requireApproval, trendEnabled: task.trendEnabled }),
             // @ts-ignore — Next.js extended fetch
             signal: AbortSignal.timeout(3000),
           });

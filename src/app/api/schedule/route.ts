@@ -32,13 +32,20 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { enabled, slots } = body as { enabled: boolean; slots: ScheduleSlot[] };
+    const { enabled, slots, require_approval, trend_enabled } = body as {
+      enabled: boolean;
+      slots: ScheduleSlot[];
+      require_approval?: boolean;
+      trend_enabled?: boolean;
+    };
 
     const { data, error } = await supabase
       .from("schedule_configs")
       .upsert({
         user_id: user.id,
         enabled: enabled ?? false,
+        require_approval: require_approval ?? false,
+        trend_enabled: trend_enabled ?? false,
         slots: slots || [],
         timezone: "Asia/Tokyo",
         updated_at: new Date().toISOString(),

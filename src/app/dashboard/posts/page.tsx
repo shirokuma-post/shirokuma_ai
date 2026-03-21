@@ -80,6 +80,11 @@ export default function PostsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [deleting, setDeleting] = useState<string | null>(null);
 
+  // 承認待ち
+  const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
+  const [showPending, setShowPending] = useState(false);
+  const [approving, setApproving] = useState<string | null>(null);
+
   const fetchPosts = useCallback(async (p: number = 1) => {
     try { const res = await fetch("/api/posts?page=" + p + "&limit=10"); if (res.ok) { const data = await res.json(); setPosts(data.posts); setTotalPosts(data.total); setTotalPages(data.totalPages); setPage(p); } } catch (e) { console.error(e); } finally { setLoading(false); }
   }, []);
@@ -98,7 +103,32 @@ export default function PostsPage() {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { fetchPosts(1); fetchStats(); fetchStyleDefaults(); }, [fetchPosts, fetchStats]);
+  useEffect(() => { fetchPosts(1); fetchStats(); fetchStyleDefaults(); fetchPendingPosts(); }, [fetchPosts, fetchStats]);
+
+  async function fetchPendingPosts() {
+    try {
+      const res = await fetch("/api/posts?status=pending_approval&limit=50");
+      if (res.ok) {
+        const data = await res.json();
+        setPendingPosts(data.posts || []);
+      }
+    } catch {}
+  }
+
+  async function handleApprove(postId: string, action: "approve" | "redo") {
+    setApproving(postId);
+    try {
+      const res = await fetch("/api/posts/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, action }),
+      });
+      if (res.ok) {
+        fetchPendingPosts();
+        if (action === "approve") fetchPosts(1);
+      }
+    } catch {} finally { setApproving(null); }
+  }
 
   async function fetchStyleDefaults() {
     try {
@@ -173,8 +203,8 @@ export default function PostsPage() {
 
   function formatDate(d: string) { return new Date(d).toLocaleDateString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
   function getStatusBadge(s: string) {
-    const st: Record<string,string> = { posted: "bg-green-50 text-green-700", draft: "bg-gray-50 text-gray-600", scheduled: "bg-blue-50 text-blue-700", failed: "bg-red-50 text-red-700" };
-    const lb: Record<string,string> = { posted: "投稿済み", draft: "下書き", scheduled: "予約中", failed: "失敗" };
+    const st: Record<string,string> = { posted: "bg-green-50 text-green-700", draft: "bg-gray-50 text-gray-600", scheduled: "bg-blue-50 text-blue-700", failed: "bg-red-50 text-red-700", pending_approval: "bg-amber-50 text-amber-700" };
+    const lb: Record<string,string> = { posted: "投稿済み", draft: "下書き", scheduled: "予約中", failed: "失敗", pending_approval: "承認待ち" };
     return <span className={"text-xs px-2 py-0.5 rounded-full " + (st[s] || st.draft)}>{lb[s] || s}</span>;
   }
   function getSnsIcons(ids: any) {
@@ -350,6 +380,44 @@ export default function PostsPage() {
               <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); }}>破棄</Button>
             </div>
           </CardContent>
+        </Card>
+      )}
+
+      {/* 承認待ち */}
+      {pendingPosts.length > 0 && (
+        <Card className="mb-6 border-amber-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-amber-800">承認待ち</h2>
+                <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">{pendingPosts.length}件</span>
+              </div>
+              <button onClick={() => setShowPending(!showPending)} className="text-xs text-amber-600 hover:text-amber-700">{showPending ? "閉じる" : "表示"}</button>
+            </div>
+          </CardHeader>
+          {showPending && (
+            <CardContent>
+              <div className="space-y-3">
+                {pendingPosts.map((post) => (
+                  <div key={post.id} className="border border-amber-100 rounded-lg p-4 bg-amber-50/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">{getStatusBadge(post.status)}{post.style_used && <span className="text-xs text-gray-400">{STYLE_LABELS[post.style_used] || post.style_used}</span>}</div>
+                      <span className="text-xs text-gray-400">{formatDate(post.created_at)}</span>
+                    </div>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3">{post.content}</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleApprove(post.id, "approve")} disabled={approving === post.id}>
+                        {approving === post.id ? "処理中..." : "承認して投稿"}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleApprove(post.id, "redo")} disabled={approving === post.id}>
+                        再生成（削除）
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          )}
         </Card>
       )}
 

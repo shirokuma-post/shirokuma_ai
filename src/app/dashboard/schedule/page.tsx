@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { calculateCost, formatUsd, type CostInput } from "@/lib/cost-simulator";
 
 type Execution = { id: string; scheduled_time: string; status: string; error_message: string | null; sns_results: any; created_at: string };
 type UserPlan = "free" | "pro" | "business";
@@ -57,6 +58,9 @@ const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", c
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
+  const [requireApproval, setRequireApproval] = useState(false);
+  const [trendEnabled, setTrendEnabled] = useState(false);
+  const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google">("anthropic");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [defaultSlot, setDefaultSlot] = useState<Slot>(INITIAL_DEFAULT_SLOT);
   const [expandedSlot, setExpandedSlot] = useState<number | null>(null);
@@ -87,8 +91,13 @@ export default function SchedulePage() {
 
   async function fetchPlan() {
     try {
-      const res = await fetch("/api/dashboard");
-      if (res.ok) { const d = await res.json(); setUserPlan((d.plan?.id || "free").toLowerCase() as UserPlan); }
+      const [dashRes, keyRes] = await Promise.all([fetch("/api/dashboard"), fetch("/api/apikeys")]);
+      if (dashRes.ok) { const d = await dashRes.json(); setUserPlan((d.plan?.id || "free").toLowerCase() as UserPlan); }
+      if (keyRes.ok) {
+        const kd = await keyRes.json();
+        const aiKey = (kd.keys || []).find((k: any) => ["anthropic", "openai", "google"].includes(k.provider));
+        if (aiKey) setAiProvider(aiKey.provider);
+      }
     } catch {}
   }
 
@@ -99,6 +108,8 @@ export default function SchedulePage() {
         const data = await res.json();
         if (data.config) {
           setEnabled(data.config.enabled);
+          setRequireApproval(data.config.require_approval ?? false);
+          setTrendEnabled(data.config.trend_enabled ?? false);
           // 新形式 (slots) を優先、なければ旧形式から変換
           if (data.config.slots && data.config.slots.length > 0) {
             setSlots(data.config.slots);
@@ -128,7 +139,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots }),
+        body: JSON.stringify({ enabled, slots, require_approval: requireApproval, trend_enabled: trendEnabled }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
@@ -155,6 +166,14 @@ export default function SchedulePage() {
   const canUseCharacter = planLevel(userPlan) >= 1;
   const canUseSplit = planLevel(userPlan) >= 2;
   const canUseThreads = planLevel(userPlan) >= 2;
+
+  // ---- コスト予測 ----
+  const costInput: CostInput = {
+    slots: slots.map(s => ({ length: s.length, split: s.split, style: s.style })),
+    aiProvider,
+    trendEnabled,
+  };
+  const cost = slots.length > 0 ? calculateCost(costInput) : null;
 
   if (loading) return <div className="text-center py-12"><p className="text-gray-400">読み込み中...</p></div>;
 
@@ -317,6 +336,32 @@ export default function SchedulePage() {
               <a href="/pricing" className="block w-full py-2.5 border border-dashed border-amber-300 rounded-lg text-sm text-center text-amber-600 hover:bg-amber-50">🔒 アップグレードでスロット追加 →</a>
             )}
 
+            {/* 承認ワークフロー トグル */}
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <div>
+                <p className="text-sm font-medium text-gray-700">承認ワークフロー</p>
+                <p className="text-xs text-gray-400">ONにすると自動投稿前に承認が必要になります</p>
+              </div>
+              <button onClick={() => setRequireApproval(!requireApproval)} className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (requireApproval ? "bg-amber-500" : "bg-gray-200")}>
+                <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (requireApproval ? "translate-x-6" : "translate-x-1")} />
+              </button>
+            </div>
+
+            {/* RSSトレンド連携 トグル (Business限定) */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-700">トレンド連携{planLevel(userPlan) < 2 && <span className="ml-1 text-xs text-gray-400">Business🔒</span>}</p>
+                <p className="text-xs text-gray-400">RSSトレンドを投稿に自動反映</p>
+              </div>
+              {planLevel(userPlan) >= 2 ? (
+                <button onClick={() => setTrendEnabled(!trendEnabled)} className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (trendEnabled ? "bg-blue-500" : "bg-gray-200")}>
+                  <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (trendEnabled ? "translate-x-6" : "translate-x-1")} />
+                </button>
+              ) : (
+                <a href="/pricing" className="text-xs text-amber-600 hover:text-amber-700">🔒 アップグレード →</a>
+              )}
+            </div>
+
             <div className="flex items-center gap-3 pt-2">
               <Button onClick={handleSave} disabled={saving}>{saving ? "保存中..." : "保存する"}</Button>
               {saved && <span className="text-sm text-green-600">保存しました！</span>}
@@ -324,6 +369,34 @@ export default function SchedulePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* コスト予測ウィジェット */}
+      {cost && (
+        <Card className="mb-6">
+          <CardContent className="pt-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">推定APIコスト</h3>
+              <span className="text-xs text-gray-400">{aiProvider === "anthropic" ? "Claude" : aiProvider === "openai" ? "GPT-4o" : "Gemini"} 基準</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-gray-500 mb-1">日額</p>
+                <p className="text-lg font-bold text-gray-900">{formatUsd(cost.dailyCostUsd)}</p>
+                <p className="text-xs text-gray-400">{slots.length}スロット</p>
+              </div>
+              <div className="bg-brand-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-brand-600 mb-1">月額 (30日)</p>
+                <p className="text-lg font-bold text-brand-700">{formatUsd(cost.monthlyCostUsd)}</p>
+                <p className="text-xs text-gray-400">{(cost.monthlyTokensIn + cost.monthlyTokensOut).toLocaleString()} tokens</p>
+              </div>
+            </div>
+            {trendEnabled && cost.breakdown.trendOverhead > 0 && (
+              <p className="text-xs text-blue-500 mt-2">トレンド連携: +{formatUsd(cost.breakdown.trendOverhead)}/月</p>
+            )}
+            <p className="text-xs text-gray-400 mt-2">※ 実際の料金はトークン数により変動します。目安としてご利用ください。</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Execution History */}
       <Card>

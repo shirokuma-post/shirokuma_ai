@@ -5,7 +5,7 @@
 
 export type AiProvider = "anthropic" | "openai" | "google";
 export type SnsProvider = "x" | "threads";
-export type PostStatus = "draft" | "scheduled" | "posted" | "failed";
+export type PostStatus = "draft" | "scheduled" | "posted" | "failed" | "pending_approval";
 export type PostStyle =
   | "paradigm_break"
   | "provocative"
@@ -83,6 +83,8 @@ export interface ScheduleConfig {
   id: string;
   user_id: string;
   enabled: boolean;
+  require_approval: boolean;
+  trend_enabled: boolean;      // RSSトレンド連携 (Business)
   slots: ScheduleSlot[];
   timezone: string;
   created_at: string;
