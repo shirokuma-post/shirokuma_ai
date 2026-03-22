@@ -39,10 +39,10 @@ export async function POST(request: Request) {
       .eq("user_id", user.id)
       .single();
 
-    if (!config) return NextResponse.json({ error: "No schedule config" }, { status: 400 });
+    if (!config) return NextResponse.json({ error: "スケジュールが未設定です。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
     const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
-    if (slots.length === 0) return NextResponse.json({ error: "No slots configured" }, { status: 400 });
+    if (slots.length === 0) return NextResponse.json({ error: "投稿スロットがありません。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
     const trendEnabled = config.trend_enabled ?? false;
 
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       .eq("is_active", true)
       .single();
 
-    if (!philosophy) return NextResponse.json({ error: "No active philosophy" }, { status: 400 });
+    if (!philosophy) return NextResponse.json({ error: "マイコンセプトが未設定です。Concept画面で思想・理論を登録してください。" }, { status: 400 });
 
     // Get AI key
     const { data: aiKeys } = await supabase
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       .in("provider", ["anthropic", "openai", "google"]);
 
     const aiKey = aiKeys?.[0];
-    if (!aiKey) return NextResponse.json({ error: "No AI key" }, { status: 400 });
+    if (!aiKey) return NextResponse.json({ error: "AI APIキーが未設定です。Settings画面でAPIキーを登録してください。" }, { status: 400 });
 
     const provider = aiKey.provider;
     const decryptedKey = decrypt(aiKey.encrypted_value);

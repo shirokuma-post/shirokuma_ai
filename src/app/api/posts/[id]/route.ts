@@ -68,12 +68,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .single();
 
     if (fetchErr || !draft) {
-      return NextResponse.json({ error: "Draft not found" }, { status: 404 });
+      return NextResponse.json({ error: "ドラフトが見つかりません。既に投稿済みか削除された可能性があります。" }, { status: 404 });
     }
 
     const slotConfig = draft.slot_config as any;
     if (!slotConfig) {
-      return NextResponse.json({ error: "No slot config for regeneration" }, { status: 400 });
+      return NextResponse.json({ error: "スロット設定がありません。一括生成からやり直してください。" }, { status: 400 });
     }
 
     // Get philosophy
@@ -84,7 +84,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .eq("is_active", true)
       .single();
 
-    if (!philosophy) return NextResponse.json({ error: "No philosophy" }, { status: 400 });
+    if (!philosophy) return NextResponse.json({ error: "マイコンセプトが未設定です。Concept画面で登録してください。" }, { status: 400 });
 
     // Get AI key
     const { data: aiKeys } = await supabase
@@ -94,7 +94,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .in("provider", ["anthropic", "openai", "google"]);
 
     const aiKey = aiKeys?.[0];
-    if (!aiKey) return NextResponse.json({ error: "No AI key" }, { status: 400 });
+    if (!aiKey) return NextResponse.json({ error: "AI APIキーが未設定です。Settings画面で登録してください。" }, { status: 400 });
 
     const provider = aiKey.provider;
     const decryptedKey = decrypt(aiKey.encrypted_value);

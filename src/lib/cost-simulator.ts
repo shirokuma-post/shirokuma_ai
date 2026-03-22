@@ -103,8 +103,19 @@ export function calculateCost(input: CostInput): CostResult {
   };
 }
 
-/** Format USD nicely: $0.00 ~ $999.99 */
+/** USD→JPY概算レート（定期的に更新推奨） */
+const USD_TO_JPY = 150;
+
+/** Format as ¥XX（$X.XX） */
 export function formatUsd(usd: number): string {
-  if (usd < 0.01) return "< $0.01";
-  return `$${usd.toFixed(2)}`;
+  if (usd < 0.01) return "¥1未満（$0.01未満）";
+  const jpy = Math.round(usd * USD_TO_JPY);
+  return `¥${jpy.toLocaleString()}（$${usd.toFixed(2)}）`;
+}
+
+/** Format as short yen only */
+export function formatJpy(usd: number): string {
+  const jpy = Math.round(usd * USD_TO_JPY);
+  if (jpy < 1) return "¥1未満";
+  return `¥${jpy.toLocaleString()}`;
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { calculateCost, formatUsd, type CostInput } from "@/lib/cost-simulator";
+import { calculateCost, formatUsd, formatJpy, type CostInput } from "@/lib/cost-simulator";
 
 type Execution = { id: string; scheduled_time: string; status: string; error_message: string | null; sns_results: any; created_at: string };
 type UserPlan = "free" | "pro" | "business";

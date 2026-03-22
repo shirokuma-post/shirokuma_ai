@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -45,14 +46,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold">S</span>
-            </div>
-            <div>
-              <span className="font-bold text-xl text-gray-900">SHIROKUMA</span>
-              <span className="text-brand-600 font-medium text-xl ml-1">Post</span>
-            </div>
+          <Link href="/" className="inline-block">
+            <Image src="/shirokuma-hero.png" alt="SHIROKUMA Post — AI Post Generation & Scheduling" width={400} height={218} className="mx-auto mb-2" priority />
           </Link>
         </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -40,9 +41,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-100">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">S</span>
-          </div>
+          <Image src="/shirokuma-logo.png" alt="SHIROKUMA Post" width={36} height={36} className="rounded-lg" />
           <div>
             <span className="font-bold text-gray-900">SHIROKUMA</span>
             <span className="text-brand-600 font-medium ml-1">Post</span>
