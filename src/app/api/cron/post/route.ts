@@ -1,17 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Client } from "@upstash/qstash";
-import type { SnsTarget } from "@/lib/ai/generate-post";
-
-// ---------- Types ----------
-interface ScheduleSlot {
-  time: string;
-  target: SnsTarget;
-  style: string;
-  character: string;
-  length: string;
-  split: boolean;
-}
+import { decrypt } from "@/lib/crypto";
 
 // ---------- Service client (bypasses RLS) ----------
 function getServiceClient() {
@@ -22,8 +12,9 @@ function getServiceClient() {
 }
 
 // =============================================================
-// Dispatcher: 対象スロットを洗い出して QStash 経由で Worker を呼び出し
-// QStash がリトライ・配信保証を担当するので Dispatcher は数秒で完了
+// Dispatcher: ドラフト投稿の実行
+// 現在時刻に一致するスロットの draft を SNS に投稿する
+// auto_post = true のドラフトのみ対象
 // =============================================================
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -42,125 +33,96 @@ export async function GET(request: Request) {
       jstNow.getMinutes().toString().padStart(2, "0");
     const todayStr = jstNow.toISOString().split("T")[0];
 
-    console.log(`[CRON/DISPATCHER] Running at JST ${currentTime} (${todayStr})`);
+    console.log(`[CRON/POST] Running at JST ${currentTime} (${todayStr})`);
 
-    // 1. Get all enabled schedules
-    const { data: configs, error: configError } = await supabase
-      .from("schedule_configs")
+    // 1. Get today's drafts that are due (auto_post = true)
+    const { data: drafts, error: draftError } = await supabase
+      .from("posts")
       .select("*")
-      .eq("enabled", true);
+      .eq("status", "draft")
+      .eq("auto_post", true)
+      .gte("scheduled_at", todayStr + "T00:00:00+09:00")
+      .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-    if (configError || !configs?.length) {
-      return NextResponse.json({ message: "No active schedules", dispatched: 0 });
+    if (draftError || !drafts?.length) {
+      return NextResponse.json({ message: "No drafts to post", posted: 0, time: currentTime });
     }
 
-    // 2. Collect tasks to dispatch
-    const tasks: { userId: string; slot: ScheduleSlot; requireApproval: boolean; trendEnabled: boolean }[] = [];
+    // 2. Filter drafts matching current time (within 5 min window)
+    const dueDrafts = drafts.filter((draft: any) => {
+      if (!draft.scheduled_at) return false;
+      const scheduledDate = new Date(draft.scheduled_at);
+      const scheduledJst = new Date(scheduledDate.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+      const sh = scheduledJst.getHours();
+      const sm = scheduledJst.getMinutes();
+      const [ch, cm] = currentTime.split(":").map(Number);
+      const diff = Math.abs(sh * 60 + sm - (ch * 60 + cm));
+      return diff <= 4;
+    });
 
-    for (const config of configs) {
-      const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
-      const requireApproval = config.require_approval ?? false;
-      const trendEnabled = config.trend_enabled ?? false;
-
-      // Find slots matching current time (within 5 min window)
-      const matchedSlots = slots.filter((slot) => {
-        const [h, m] = slot.time.split(":").map(Number);
-        const [ch, cm] = currentTime.split(":").map(Number);
-        const diff = Math.abs(h * 60 + m - (ch * 60 + cm));
-        return diff <= 4;
-      });
-
-      for (const slot of matchedSlots) {
-        // Skip if already executed for this slot today
-        const { data: existing } = await supabase
-          .from("schedule_executions")
-          .select("id")
-          .eq("user_id", config.user_id)
-          .eq("scheduled_time", slot.time)
-          .gte("created_at", todayStr + "T00:00:00+09:00")
-          .limit(1);
-
-        if (existing && existing.length > 0) continue;
-
-        tasks.push({ userId: config.user_id, slot, requireApproval, trendEnabled });
-      }
+    if (dueDrafts.length === 0) {
+      return NextResponse.json({ message: "No matching drafts", posted: 0, time: currentTime });
     }
 
-    if (tasks.length === 0) {
-      return NextResponse.json({ message: "No matching slots", dispatched: 0, time: currentTime });
-    }
+    console.log(`[CRON/POST] Found ${dueDrafts.length} due drafts`);
 
-    // 3. QStash でタスクをキューイング
+    // 3. QStash or direct — post each draft
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const workerUrl = `${appUrl}/api/worker/post`;
     const qstashToken = process.env.QSTASH_TOKEN;
 
-    const dispatched: { userId: string; time: string; target: string }[] = [];
-    const dispatchErrors: { userId: string; time: string; error: string }[] = [];
+    const posted: string[] = [];
+    const postErrors: { id: string; error: string }[] = [];
 
-    if (qstashToken) {
-      // --- QStash モード（本番） ---
-      const qstash = new Client({ token: qstashToken });
+    const promises = dueDrafts.map(async (draft: any) => {
+      try {
+        const payload = {
+          mode: "post-draft",
+          draftPostId: draft.id,
+          userId: draft.user_id,
+        };
 
-      const promises = tasks.map(async (task) => {
-        try {
+        if (qstashToken) {
+          const qstash = new Client({ token: qstashToken });
           await qstash.publishJSON({
             url: workerUrl,
-            body: { userId: task.userId, slot: task.slot, requireApproval: task.requireApproval, trendEnabled: task.trendEnabled },
+            body: payload,
             retries: 3,
-            // QStash が Worker を呼ぶときのヘッダー（Worker 側で検証）
           });
-          dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
-        } catch (err: any) {
-          console.error(`[CRON/DISPATCHER] QStash publish failed for user ${task.userId}:`, err.message);
-          dispatchErrors.push({ userId: task.userId, time: task.slot.time, error: err.message });
-        }
-      });
-
-      await Promise.allSettled(promises);
-    } else {
-      // --- フォールバック: 直接 fetch（ローカル開発 / QStash 未設定時） ---
-      console.warn("[CRON/DISPATCHER] QSTASH_TOKEN not set, falling back to direct fetch");
-
-      const promises = tasks.map(async (task) => {
-        try {
-          const res = await fetch(workerUrl, {
+        } else {
+          await fetch(workerUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${cronSecret}`,
             },
-            body: JSON.stringify({ userId: task.userId, slot: task.slot, requireApproval: task.requireApproval, trendEnabled: task.trendEnabled }),
-            // @ts-ignore — Next.js extended fetch
+            body: JSON.stringify(payload),
+            // @ts-ignore
             signal: AbortSignal.timeout(3000),
+          }).catch((err: any) => {
+            // Timeout = worker is processing (ok)
+            if (err.name !== "AbortError" && err.name !== "TimeoutError") throw err;
           });
-          dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
-        } catch (err: any) {
-          // タイムアウト = Worker に届いて処理中（正常）
-          if (err.name === "AbortError" || err.name === "TimeoutError") {
-            dispatched.push({ userId: task.userId, time: task.slot.time, target: task.slot.target });
-          } else {
-            console.error(`[CRON/DISPATCHER] Direct fetch failed for user ${task.userId}:`, err.message);
-            dispatchErrors.push({ userId: task.userId, time: task.slot.time, error: err.message });
-          }
         }
-      });
+        posted.push(draft.id);
+      } catch (err: any) {
+        console.error(`[CRON/POST] Failed to dispatch draft ${draft.id}:`, err.message);
+        postErrors.push({ id: draft.id, error: err.message });
+      }
+    });
 
-      await Promise.allSettled(promises);
-    }
+    await Promise.allSettled(promises);
 
-    console.log(`[CRON/DISPATCHER] Dispatched ${dispatched.length} tasks, ${dispatchErrors.length} errors`);
+    console.log(`[CRON/POST] Dispatched ${posted.length}, errors ${postErrors.length}`);
 
     return NextResponse.json({
-      message: "Dispatch completed",
-      dispatched: dispatched.length,
-      errors: dispatchErrors.length,
-      mode: qstashToken ? "qstash" : "direct",
+      message: "Post dispatch completed",
+      posted: posted.length,
+      errors: postErrors.length,
       time: currentTime,
-      details: { dispatched, errors: dispatchErrors },
     });
   } catch (error: any) {
-    console.error("[CRON/DISPATCHER] Fatal error:", error);
+    console.error("[CRON/POST] Fatal error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -192,7 +192,7 @@ export default function SchedulePage() {
               <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (enabled ? "translate-x-6" : "translate-x-1")} />
             </button>
           </div>
-          <p className="text-sm text-gray-500 mt-1">{enabled ? "自動投稿が有効です" : "自動投稿は無効です"}</p>
+          <p className="text-sm text-gray-500 mt-1">{enabled ? "毎日深夜2時に一括生成 → スロット時刻に自動投稿" : "自動生成・投稿は無効です"}</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -430,7 +430,7 @@ export default function SchedulePage() {
 
       <div className="mt-6 p-4 bg-gray-50 rounded-xl text-xs text-gray-500">
         <p className="font-medium text-gray-600 mb-1">自動投稿の仕組み</p>
-        <p>設定時刻に自動投稿を実行します。スロットごとに投稿先・スタイル・キャラを個別設定できます。マイコンセプトとAI APIキーの設定が必要です。</p>
+        <p>毎日深夜2時に全スロット分の投稿を一括生成（ドラフト保存）。Posts画面で内容確認・編集・再生成が可能。各スロットの自動投稿スイッチがONなら、設定時刻にSNSへ自動投稿されます。マイコンセプトとAI APIキーの設定が必要です。</p>
       </div>
     </div>
   );

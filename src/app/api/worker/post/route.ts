@@ -29,9 +29,12 @@ interface ScheduleSlot {
 
 interface WorkerPayload {
   userId: string;
-  slot: ScheduleSlot;
+  slot?: ScheduleSlot;
   requireApproval?: boolean;
   trendEnabled?: boolean;
+  // post-draft mode: ドラフトを直接SNSに投稿
+  mode?: "post-draft";
+  draftPostId?: string;
 }
 
 // ---------- Service client (bypasses RLS) ----------
@@ -99,12 +102,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { userId, slot, requireApproval, trendEnabled } = payload;
+  const { userId, slot, requireApproval, trendEnabled, mode, draftPostId } = payload;
+
+  const supabase = getServiceClient();
+
+  // ===== post-draft モード: 既存ドラフトをSNSに投稿 =====
+  if (mode === "post-draft" && draftPostId) {
+    try {
+      await postDraft(supabase, draftPostId, userId);
+      return NextResponse.json({ success: true, mode: "post-draft", draftPostId });
+    } catch (err: any) {
+      console.error(`[WORKER] post-draft error for ${draftPostId}:`, err.message);
+      // Mark draft as failed
+      await supabase.from("posts").update({ status: "failed", error_message: err.message }).eq("id", draftPostId);
+      return NextResponse.json({ error: err.message, draftPostId }, { status: 500 });
+    }
+  }
+
+  // ===== Legacy モード: 生成 + 即投稿 =====
   if (!userId || !slot) {
     return NextResponse.json({ error: "Missing userId or slot" }, { status: 400 });
   }
-
-  const supabase = getServiceClient();
 
   try {
     await processSlot(supabase, userId, slot, requireApproval, trendEnabled);
@@ -112,7 +130,6 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error(`[WORKER] Error for user ${userId} slot ${slot.time}:`, err.message);
 
-    // 失敗ログを記録
     await supabase.from("schedule_executions").insert({
       user_id: userId,
       scheduled_time: slot.time,
@@ -322,6 +339,74 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
     .eq("id", userId);
 
   console.log(`[WORKER] Posted for user ${userId} at ${slot.time} → ${snsTarget}`);
+}
+
+// ---------- Post draft to SNS ----------
+async function postDraft(supabase: any, postId: string, userId: string) {
+  // Fetch the draft
+  const { data: draft, error } = await supabase
+    .from("posts")
+    .select("*")
+    .eq("id", postId)
+    .eq("status", "draft")
+    .eq("auto_post", true)
+    .single();
+
+  if (error || !draft) throw new Error("Draft not found or auto_post disabled");
+
+  const content = draft.content;
+  const snsTarget = draft.sns_target || "x";
+
+  // Parse split content
+  const parts = content.split("\n\n---\n\n");
+  const hookText = parts[0];
+  const replyText = parts.length > 1 ? parts[1] : null;
+
+  // Post to SNS
+  const snsResults: Record<string, any> = {};
+  try {
+    if (snsTarget === "x") {
+      snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null);
+    } else if (snsTarget === "threads") {
+      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText);
+    }
+  } catch (err: any) {
+    snsResults[snsTarget] = { error: err.message };
+  }
+
+  // Update post status
+  await supabase
+    .from("posts")
+    .update({
+      status: "posted",
+      posted_at: new Date().toISOString(),
+      sns_post_ids: snsResults,
+    })
+    .eq("id", postId);
+
+  // Record execution
+  const slotConfig = draft.slot_config as any;
+  await supabase.from("schedule_executions").insert({
+    user_id: userId,
+    scheduled_time: slotConfig?.time || "00:00",
+    status: "success",
+    post_id: postId,
+    sns_results: snsResults,
+  });
+
+  // Increment daily count
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("daily_post_count")
+    .eq("id", userId)
+    .single();
+
+  await supabase
+    .from("profiles")
+    .update({ daily_post_count: (profile?.daily_post_count || 0) + 1 })
+    .eq("id", userId);
+
+  console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
 }
 
 // ---------- SNS posting helper ----------

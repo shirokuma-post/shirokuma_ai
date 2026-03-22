@@ -83,6 +83,10 @@ CREATE TABLE public.posts (
   sns_post_ids JSONB,             -- { "x": {...}, "threads": {...} }
   error_message TEXT,
   ai_model_used TEXT,             -- "anthropic" | "openai" | "google"
+  sns_target TEXT DEFAULT 'x',    -- "x" | "threads"
+  auto_post BOOLEAN NOT NULL DEFAULT true,
+  slot_index INTEGER,             -- スロット番号（0-indexed）
+  slot_config JSONB,              -- 生成時のスロット設定を保持
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

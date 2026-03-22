@@ -67,6 +67,10 @@ export interface Post {
   sns_post_ids: Record<string, any> | null;
   error_message: string | null;
   ai_model_used: string | null;
+  sns_target: SnsProvider | null;
+  auto_post: boolean;
+  slot_index: number | null;
+  slot_config: Record<string, any> | null;
   created_at: string;
 }
 
