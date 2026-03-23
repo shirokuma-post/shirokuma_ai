@@ -32,6 +32,7 @@ interface WorkerPayload {
   slot?: ScheduleSlot;
   requireApproval?: boolean;
   trendEnabled?: boolean;
+  trendCategories?: string[];
   // post-draft mode: ドラフトを直接SNSに投稿
   mode?: "post-draft";
   draftPostId?: string;
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { userId, slot, requireApproval, trendEnabled, mode, draftPostId } = payload;
+  const { userId, slot, requireApproval, trendEnabled, trendCategories, mode, draftPostId } = payload;
 
   const supabase = getServiceClient();
 
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await processSlot(supabase, userId, slot, requireApproval, trendEnabled);
+    await processSlot(supabase, userId, slot, requireApproval, trendEnabled, trendCategories);
     return NextResponse.json({ success: true, userId, time: slot.time, target: slot.target });
   } catch (err: any) {
     console.error(`[WORKER] Error for user ${userId} slot ${slot.time}:`, err.message);
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
 }
 
 // ---------- Process a single slot ----------
-async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, requireApproval?: boolean, trendEnabled?: boolean) {
+async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, requireApproval?: boolean, trendEnabled?: boolean, trendCategories?: string[]) {
   // 1. Get user's philosophy
   const { data: philosophy } = await supabase
     .from("philosophies")
@@ -188,17 +189,20 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
     // Non-fatal
   }
 
-  // 5.5. Get trend context (if enabled)
+  // 5.5. Get trend context (if enabled, with category filter)
   let trendContext = "";
   if (trendEnabled) {
     try {
-      const { data: trends } = await supabase
+      const cats = trendCategories?.length ? trendCategories : ["general", "technology", "business"];
+      let query = supabase
         .from("daily_trends")
-        .select("title, summary")
+        .select("title, summary, category")
         .order("fetched_at", { ascending: false })
-        .limit(5);
+        .limit(10);
+      query = query.in("category", cats);
+      const { data: trends } = await query;
       if (trends?.length) {
-        const trendList = trends.map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
+        const trendList = trends.slice(0, 5).map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
         trendContext = `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${trendList}`;
       }
     } catch {

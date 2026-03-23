@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     if (slots.length === 0) return NextResponse.json({ error: "投稿スロットがありません。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
     const trendEnabled = config.trend_enabled ?? false;
+    const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
     // Calculate today's date in JST
     const now = new Date();
@@ -90,17 +91,21 @@ export async function POST(request: Request) {
       if (lp?.length) learningContext = buildLearningContext(lp);
     } catch {}
 
-    // Trend context
+    // Trend context (カテゴリフィルタ付き)
     let trendContext = "";
     if (trendEnabled) {
       try {
-        const { data: trends } = await supabase
+        let query = supabase
           .from("daily_trends")
-          .select("title, summary")
+          .select("title, summary, category")
           .order("fetched_at", { ascending: false })
-          .limit(5);
+          .limit(10);
+        if (trendCategories.length > 0) {
+          query = query.in("category", trendCategories);
+        }
+        const { data: trends } = await query;
         if (trends?.length) {
-          const list = trends.map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
+          const list = trends.slice(0, 5).map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
           trendContext = `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${list}`;
         }
       } catch {}

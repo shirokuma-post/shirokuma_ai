@@ -15,20 +15,12 @@ function getServiceClient() {
 // Vercel Cron or QStash で 1日2〜3回実行を想定
 // =============================================================
 
-const RSS_FEEDS = [
-  {
-    url: "https://news.google.com/rss?hl=ja&gl=JP&ceid=JP:ja",
-    category: "general",
-  },
-  {
-    url: "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGRqTVhZU0FtcGhHZ0pLVUNnQVAB?hl=ja&gl=JP&ceid=JP:ja",
-    category: "technology",
-  },
-  {
-    url: "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtcGhHZ0pLVUNnQVAB?hl=ja&gl=JP&ceid=JP:ja",
-    category: "business",
-  },
-];
+import { TREND_CATEGORIES } from "@/lib/trend-categories";
+
+const RSS_FEEDS = Object.entries(TREND_CATEGORIES).map(([category, info]) => ({
+  url: info.url,
+  category,
+}));
 
 interface RssItem {
   title: string;

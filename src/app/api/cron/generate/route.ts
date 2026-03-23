@@ -74,6 +74,7 @@ export async function GET(request: Request) {
 
       const userId = config.user_id;
       const trendEnabled = config.trend_enabled ?? false;
+      const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
       try {
         // Delete old drafts for today (regenerate fresh)
@@ -85,7 +86,7 @@ export async function GET(request: Request) {
           .gte("scheduled_at", todayStr + "T00:00:00+09:00")
           .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-        const postIds = await generateDraftsForUser(supabase, userId, slots, trendEnabled, todayStr);
+        const postIds = await generateDraftsForUser(supabase, userId, slots, trendEnabled, trendCategories, todayStr);
         totalGenerated += postIds.length;
 
         // Schedule QStash delayed messages for each draft
@@ -152,6 +153,7 @@ async function generateDraftsForUser(
   userId: string,
   slots: ScheduleSlot[],
   trendEnabled: boolean,
+  trendCategories: string[],
   todayStr: string,
 ): Promise<{ id: string; scheduledAt: string; userId: string }[]> {
   // 1. Get philosophy
@@ -189,17 +191,20 @@ async function generateDraftsForUser(
     }
   } catch {}
 
-  // 4. Get trend context
+  // 4. Get trend context (with category filter)
   let trendContext = "";
   if (trendEnabled) {
     try {
-      const { data: trends } = await supabase
+      const cats = trendCategories.length > 0 ? trendCategories : ["general", "technology", "business"];
+      let query = supabase
         .from("daily_trends")
-        .select("title, summary")
+        .select("title, summary, category")
+        .in("category", cats)
         .order("fetched_at", { ascending: false })
-        .limit(5);
+        .limit(10);
+      const { data: trends } = await query;
       if (trends?.length) {
-        const trendList = trends.map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
+        const trendList = trends.slice(0, 5).map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
         trendContext = `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${trendList}`;
       }
     } catch {}

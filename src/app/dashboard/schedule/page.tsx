@@ -57,12 +57,25 @@ const TARGETS = [
 // Free: 3種、Pro+: 全6種
 const FREE_STYLES = ["mix", "paradigm_break", "provocative"];
 
+const TREND_CATEGORY_OPTIONS = [
+  { id: "general", label: "総合" },
+  { id: "technology", label: "テクノロジー" },
+  { id: "business", label: "ビジネス" },
+  { id: "entertainment", label: "エンタメ" },
+  { id: "sports", label: "スポーツ" },
+  { id: "health", label: "健康" },
+  { id: "science", label: "サイエンス" },
+];
+
+const DEFAULT_TREND_CATEGORIES = ["general", "technology", "business"];
+
 const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
   const [requireApproval, setRequireApproval] = useState(false);
   const [trendEnabled, setTrendEnabled] = useState(false);
+  const [trendCategories, setTrendCategories] = useState<string[]>(DEFAULT_TREND_CATEGORIES);
   const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google">("anthropic");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [defaultSlot, setDefaultSlot] = useState<Slot>(INITIAL_DEFAULT_SLOT);
@@ -118,6 +131,7 @@ export default function SchedulePage() {
           setEnabled(data.config.enabled);
           setRequireApproval(data.config.require_approval ?? false);
           setTrendEnabled(data.config.trend_enabled ?? false);
+          setTrendCategories(data.config.trend_categories ?? DEFAULT_TREND_CATEGORIES);
           // 新形式 (slots) を優先、なければ旧形式から変換
           if (data.config.slots && data.config.slots.length > 0) {
             setSlots(data.config.slots);
@@ -147,7 +161,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots, require_approval: requireApproval, trend_enabled: trendEnabled }),
+        body: JSON.stringify({ enabled, slots, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
@@ -404,6 +418,39 @@ export default function SchedulePage() {
                 <a href="/pricing" className="text-xs text-amber-600 hover:text-amber-700">🔒 アップグレード →</a>
               )}
             </div>
+
+            {/* トレンドカテゴリ選択 */}
+            {trendEnabled && planLevel(userPlan) >= 2 && (
+              <div className="pl-2 border-l-2 border-blue-200">
+                <p className="text-xs font-medium text-gray-600 mb-2">取得ジャンル（複数選択可）</p>
+                <div className="flex flex-wrap gap-2">
+                  {TREND_CATEGORY_OPTIONS.map(cat => {
+                    const isSelected = trendCategories.includes(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => {
+                          if (isSelected) {
+                            if (trendCategories.length > 1) {
+                              setTrendCategories(prev => prev.filter(c => c !== cat.id));
+                            }
+                          } else {
+                            setTrendCategories(prev => [...prev, cat.id]);
+                          }
+                        }}
+                        className={"px-3 py-1 rounded-full text-xs font-medium transition-colors " +
+                          (isSelected
+                            ? "bg-blue-500 text-white"
+                            : "bg-gray-100 text-gray-500 hover:bg-gray-200")}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">最低1つは選択してください</p>
+              </div>
+            )}
 
             <div className="flex items-center gap-3 pt-2">
               <Button onClick={handleSave} disabled={saving}>{saving ? "保存中..." : "保存する"}</Button>

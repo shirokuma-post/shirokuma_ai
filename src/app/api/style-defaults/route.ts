@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { style, character, customStyles, customCharacters } = body;
+  const { style, character, customStyles, customCharacters, defaultTrendCategories } = body;
 
   // Pro以上でなければカスタム設定は保存しない
   const { data: profile } = await supabase
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     .single();
 
   const isPro = profile?.plan === "pro" || profile?.plan === "business";
+  const isBusiness = profile?.plan === "business";
 
   const defaults: any = {
     style: style || "mix",
@@ -45,6 +46,10 @@ export async function POST(request: Request) {
   if (isPro) {
     defaults.customStyles = (customStyles || []).slice(0, 5); // 最大5個
     defaults.customCharacters = (customCharacters || []).slice(0, 5);
+  }
+
+  if (isBusiness && defaultTrendCategories) {
+    defaults.defaultTrendCategories = defaultTrendCategories;
   }
 
   const { error } = await supabase

@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button";
 
 type AiProvider = "anthropic" | "openai" | "google";
 
+const TREND_CATEGORY_OPTIONS = [
+  { id: "general", label: "総合" },
+  { id: "technology", label: "テクノロジー" },
+  { id: "business", label: "ビジネス" },
+  { id: "entertainment", label: "エンタメ" },
+  { id: "sports", label: "スポーツ" },
+  { id: "health", label: "健康" },
+  { id: "science", label: "サイエンス" },
+];
+
 const AI_PROVIDERS: { id: AiProvider; name: string; placeholder: string }[] = [
   { id: "anthropic", name: "Anthropic (Claude)", placeholder: "sk-ant-..." },
   { id: "openai", name: "OpenAI (GPT)", placeholder: "sk-..." },
@@ -27,6 +37,7 @@ export default function SettingsPage() {
   const [customCharacters, setCustomCharacters] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
   const [savingStyle, setSavingStyle] = useState(false);
   const [savedStyle, setSavedStyle] = useState(false);
+  const [defaultTrendCategories, setDefaultTrendCategories] = useState<string[]>(["general", "technology", "business"]);
   const [testGenerating, setTestGenerating] = useState(false);
   const [testResult, setTestResult] = useState("");
   const [testSns, setTestSns] = useState<"x" | "threads">("x");
@@ -61,6 +72,7 @@ export default function SettingsPage() {
           setCharacter(styleData.defaults.character || "none");
           setCustomStyles(styleData.defaults.customStyles || []);
           setCustomCharacters(styleData.defaults.customCharacters || []);
+          if (styleData.defaults.defaultTrendCategories) setDefaultTrendCategories(styleData.defaults.defaultTrendCategories);
         }
         if (styleData.plan) setUserPlan(styleData.plan);
         if (phData.philosophy) {
@@ -179,7 +191,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/style-defaults", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style: postStyle, character, customStyles, customCharacters }),
+        body: JSON.stringify({ style: postStyle, character, customStyles, customCharacters, defaultTrendCategories }),
       });
       if (!res.ok) { alert("保存に失敗: " + (await res.json()).error); setSavingStyle(false); return; }
       setSavedStyle(true); setTimeout(() => setSavedStyle(false), 3000);
@@ -539,6 +551,39 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* デフォルトトレンドカテゴリ（Business限定） */}
+                {userPlan === "business" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">トレンドカテゴリ（デフォルト）</label>
+                    <p className="text-xs text-gray-400 mb-2">スケジュール設定でトレンド連携ONにした時の初期選択</p>
+                    <div className="flex flex-wrap gap-2">
+                      {TREND_CATEGORY_OPTIONS.map(cat => {
+                        const isSelected = defaultTrendCategories.includes(cat.id);
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                if (defaultTrendCategories.length > 1) {
+                                  setDefaultTrendCategories(prev => prev.filter(c => c !== cat.id));
+                                }
+                              } else {
+                                setDefaultTrendCategories(prev => [...prev, cat.id]);
+                              }
+                            }}
+                            className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " +
+                              (isSelected
+                                ? "bg-blue-500 text-white"
+                                : "bg-gray-100 text-gray-500 hover:bg-gray-200")}
+                          >
+                            {cat.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-3">
                   <Button onClick={handleSaveStyleDefaults} disabled={savingStyle}>

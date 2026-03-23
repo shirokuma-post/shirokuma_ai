@@ -32,11 +32,12 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { enabled, slots, require_approval, trend_enabled } = body as {
+    const { enabled, slots, require_approval, trend_enabled, trend_categories } = body as {
       enabled: boolean;
       slots: ScheduleSlot[];
       require_approval?: boolean;
       trend_enabled?: boolean;
+      trend_categories?: string[];
     };
 
     const { data, error } = await supabase
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
         enabled: enabled ?? false,
         require_approval: require_approval ?? false,
         trend_enabled: trend_enabled ?? false,
+        trend_categories: trend_categories ?? ["general", "technology", "business"],
         slots: slots || [],
         timezone: "Asia/Tokyo",
         updated_at: new Date().toISOString(),

@@ -108,6 +108,7 @@ CREATE TABLE public.schedule_configs (
   enabled BOOLEAN NOT NULL DEFAULT false,
   require_approval BOOLEAN NOT NULL DEFAULT false,
   trend_enabled BOOLEAN NOT NULL DEFAULT false,
+  trend_categories JSONB NOT NULL DEFAULT '["general", "technology", "business"]'::jsonb,
   slots JSONB NOT NULL DEFAULT '[]'::jsonb,
   timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
