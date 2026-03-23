@@ -89,6 +89,7 @@ CREATE TABLE public.posts (
   auto_post BOOLEAN NOT NULL DEFAULT true,
   slot_index INTEGER,             -- スロット番号（0-indexed）
   slot_config JSONB,              -- 生成時のスロット設定を保持
+  image_url TEXT,                 -- 画像付き投稿用（Supabase Storage公開URL）
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

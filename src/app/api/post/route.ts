@@ -6,7 +6,7 @@ import { decrypt } from "@/lib/crypto";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { provider, text, splitReply, credentials: externalCreds } = body;
+    const { provider, text, splitReply, imageUrl, credentials: externalCreds } = body;
 
     if (!text) {
       return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
@@ -83,9 +83,9 @@ export async function POST(request: Request) {
     // 投稿実行
     let result: Response;
     if (provider === "x") {
-      result = splitReply ? await postXThread(credentials, text, splitReply) : await postToX(credentials, text);
+      result = splitReply ? await postXThread(credentials, text, splitReply) : await postToX(credentials, text, imageUrl);
     } else if (provider === "threads") {
-      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text);
+      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text, imageUrl);
     } else {
       return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
@@ -132,9 +132,80 @@ function buildOAuthHeader(method: string, url: string, creds: { consumerKey: str
   return "OAuth " + Object.keys(oauthParams).sort().map((k) => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`).join(", ");
 }
 
-async function postToX(creds: any, text: string) {
+// X media upload (v1.1 endpoint, OAuth 1.0a required)
+async function uploadMediaToX(creds: any, imageUrl: string): Promise<string | null> {
+  try {
+    // 画像をダウンロード
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return null;
+    const buffer = Buffer.from(await imgRes.arrayBuffer());
+    const base64 = buffer.toString("base64");
+
+    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+
+    // v1.1 media/upload (OAuth 1.0a)
+    const uploadUrl = "https://upload.twitter.com/1.1/media/upload.json";
+
+    // Build form params for OAuth signature
+    const formParams: Record<string, string> = {
+      media_data: base64,
+    };
+
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const oauthParams: Record<string, string> = {
+      oauth_consumer_key: creds.consumerKey,
+      oauth_nonce: nonce,
+      oauth_signature_method: "HMAC-SHA1",
+      oauth_timestamp: timestamp,
+      oauth_token: creds.accessToken,
+      oauth_version: "1.0",
+    };
+
+    // Signature includes both oauth params and form params
+    const allParams = { ...oauthParams, ...formParams };
+    oauthParams.oauth_signature = generateOAuthSignature("POST", uploadUrl, allParams, creds.consumerSecret, creds.accessTokenSecret);
+
+    const authHeader = "OAuth " + Object.keys(oauthParams).sort().map((k) => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`).join(", ");
+
+    const formBody = new URLSearchParams({ media_data: base64 });
+
+    const res = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: formBody.toString(),
+    });
+
+    if (!res.ok) {
+      console.error("X media upload failed:", await res.text());
+      return null;
+    }
+
+    const data = await res.json();
+    return data.media_id_string;
+  } catch (err) {
+    console.error("X media upload error:", err);
+    return null;
+  }
+}
+
+async function postToX(creds: any, text: string, imageUrl?: string) {
   const url = "https://api.twitter.com/2/tweets";
-  const res = await fetch(url, { method: "POST", headers: { Authorization: buildOAuthHeader("POST", url, creds), "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+
+  const payload: any = { text };
+
+  // 画像がある場合、先にアップロード
+  if (imageUrl) {
+    const mediaId = await uploadMediaToX(creds, imageUrl);
+    if (mediaId) {
+      payload.media = { media_ids: [mediaId] };
+    }
+  }
+
+  const res = await fetch(url, { method: "POST", headers: { Authorization: buildOAuthHeader("POST", url, creds), "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   if (!res.ok) { const e = await res.text(); return NextResponse.json({ error: `X API error: ${res.status} - ${e}` }, { status: res.status }); }
   const data = await res.json();
   return NextResponse.json({ id: data.data.id, text: data.data.text });
@@ -155,8 +226,13 @@ async function postXThread(creds: any, hookText: string, replyText: string) {
 }
 
 // ---------- Threads posting ----------
-async function postToThreads(creds: { accessToken: string; userId: string }, text: string) {
-  const createRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ media_type: "TEXT", text, access_token: creds.accessToken }) });
+async function postToThreads(creds: { accessToken: string; userId: string }, text: string, imageUrl?: string) {
+  // 画像がある場合は IMAGE タイプ、なければ TEXT タイプ
+  const containerPayload: any = imageUrl
+    ? { media_type: "IMAGE", image_url: imageUrl, text, access_token: creds.accessToken }
+    : { media_type: "TEXT", text, access_token: creds.accessToken };
+
+  const createRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(containerPayload) });
   if (!createRes.ok) { const e = await createRes.text(); return NextResponse.json({ error: `Threads error: ${e}` }, { status: createRes.status }); }
   const { id: cid } = await createRes.json();
   await new Promise((r) => setTimeout(r, 2000));

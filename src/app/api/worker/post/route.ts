@@ -360,19 +360,20 @@ async function postDraft(supabase: any, postId: string, userId: string) {
 
   const content = draft.content;
   const snsTarget = draft.sns_target || "x";
+  const imageUrl = draft.image_url || null;
 
   // Parse split content
   const parts = content.split("\n\n---\n\n");
   const hookText = parts[0];
   const replyText = parts.length > 1 ? parts[1] : null;
 
-  // Post to SNS
+  // Post to SNS (画像は本文投稿にのみ添付、リプライには付けない)
   const snsResults: Record<string, any> = {};
   try {
     if (snsTarget === "x") {
-      snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null);
+      snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null, imageUrl);
     } else if (snsTarget === "threads") {
-      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText);
+      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl);
     }
   } catch (err: any) {
     snsResults[snsTarget] = { error: err.message };
@@ -420,6 +421,7 @@ async function postToSnsViaCron(
   provider: "x" | "threads",
   hookText: string,
   replyText: string | null,
+  imageUrl?: string | null,
 ) {
   const { data: keys } = await supabase
     .from("api_keys")
@@ -461,6 +463,7 @@ async function postToSnsViaCron(
         credentials,
         text: hookText,
         ...(replyText ? { splitReply: replyText } : {}),
+        ...(imageUrl ? { imageUrl } : {}),
       }),
     }
   );

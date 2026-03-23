@@ -36,6 +36,8 @@ export async function POST(request: Request) {
     // action === "approve" → post to SNS
     // Determine SNS target from sns_post_ids or default to X
     const content = post.content;
+    const snsTarget = post.sns_target || "x";
+    const imageUrl = post.image_url || null;
     const parts = content.split("\n\n---\n\n");
     const hookText = parts[0];
     const replyText = parts.length > 1 ? parts[1] : null;
@@ -51,9 +53,10 @@ export async function POST(request: Request) {
           cookie: request.headers.get("cookie") || "",
         },
         body: JSON.stringify({
-          provider: "x", // Default; could be enhanced to store target per post
+          provider: snsTarget,
           text: hookText,
           ...(replyText ? { splitReply: replyText } : {}),
+          ...(imageUrl ? { imageUrl } : {}),
         }),
       }
     );

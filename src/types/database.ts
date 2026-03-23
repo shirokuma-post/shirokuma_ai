@@ -73,6 +73,7 @@ export interface Post {
   auto_post: boolean;
   slot_index: number | null;
   slot_config: Record<string, any> | null;
+  image_url: string | null;
   created_at: string;
 }
 
@@ -91,6 +92,7 @@ export interface ScheduleConfig {
   enabled: boolean;
   require_approval: boolean;
   trend_enabled: boolean;      // RSSトレンド連携 (Business)
+  trend_categories: string[];  // トレンドカテゴリ選択
   slots: ScheduleSlot[];
   timezone: string;
   created_at: string;
