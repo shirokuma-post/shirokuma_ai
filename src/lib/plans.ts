@@ -1,5 +1,6 @@
 import type { SnsProvider, PostStyle } from "@/types/database";
-import type { PostLength } from "@/lib/ai/generate-post";
+
+type PostLength = "short" | "standard" | "long";
 
 // =====================================================
 // プラン定義

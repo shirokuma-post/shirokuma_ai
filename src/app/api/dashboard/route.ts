@@ -44,7 +44,7 @@ export async function GET() {
   const hasAiKey = apiKeys?.some(k => ["anthropic", "openai", "google"].includes(k.provider)) || false;
   const hasXKey = apiKeys?.some(k => k.provider === "x") || false;
   const hasThreadsKey = apiKeys?.some(k => k.provider === "threads") || false;
-  const snsProvider = profile?.sns_provider as "x" | "threads" | null;
+  const snsProvider = (profile?.sns_provider || null) as "x" | "threads" | null;
   const hasSnsKey = snsProvider === "x" ? hasXKey : snsProvider === "threads" ? hasThreadsKey : false;
 
   const { data: recentPosts } = await supabase
@@ -65,7 +65,16 @@ export async function GET() {
 
   return NextResponse.json({
     user: { email: user.email, displayName: profile?.display_name || user.email?.split("@")[0] },
-    plan: { id: plan, ...planInfo, dailyCount, postsRemaining },
+    plan: {
+      id: plan,
+      name: planInfo.name,
+      price: planInfo.price,
+      postsPerDay: planInfo.postsPerDay,
+      maxScheduleTimes: planInfo.maxScheduleTimes,
+      features: planInfo.features,
+      dailyCount,
+      postsRemaining,
+    },
     snsProvider,
     setup: {
       hasConcept: !!philosophy,
