@@ -115,9 +115,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (lp?.length) learningContext = buildLearningContext(lp);
     } catch {}
 
+    // Recent posts for anti-repetition
+    let recentPostContents: string[] = [];
+    try {
+      const { data: rp } = await supabase.from("posts").select("content").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
+      if (rp?.length) recentPostContents = rp.map((p: any) => p.content);
+    } catch {}
+
     const { system, user: userPrompt } = isSplit
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined });
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
 
     const systemFull = system + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "");
     const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);

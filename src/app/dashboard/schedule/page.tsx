@@ -26,6 +26,10 @@ const STYLES = [
   { id: "provocative", label: "毒舌問いかけ" },
   { id: "flip", label: "ひっくり返し" },
   { id: "poison_story", label: "毒入りストーリー" },
+  { id: "boyaki", label: "ぼやき" },
+  { id: "yueki", label: "有益" },
+  { id: "jitsuwa", label: "実体験風" },
+  { id: "gyakubari", label: "逆張り質問" },
   { id: "ai_optimized", label: "AI最適化" },
 ];
 
@@ -54,8 +58,8 @@ const TARGETS = [
   { id: "threads" as const, label: "Threads" },
 ];
 
-// Free: 3種、Pro+: 全6種
-const FREE_STYLES = ["mix", "paradigm_break", "provocative"];
+// Free: 5種、Pro+: 全10種
+const FREE_STYLES = ["mix", "paradigm_break", "provocative", "boyaki", "yueki"];
 
 const TREND_CATEGORY_OPTIONS = [
   { id: "general", label: "総合" },

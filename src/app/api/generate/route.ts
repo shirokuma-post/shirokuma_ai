@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     }
 
     // 7. 過去投稿を取得（重複回避用）
-    let recentPostsContext = "";
+    let recentPostContents: string[] = [];
     try {
       const { data: recentPosts } = await supabase
         .from("posts")
@@ -89,8 +89,7 @@ export async function POST(request: Request) {
         .order("created_at", { ascending: false })
         .limit(10);
       if (recentPosts && recentPosts.length > 0) {
-        const summaries = recentPosts.map((p, i) => `${i + 1}. ${p.content.slice(0, 80)}`).join("\n");
-        recentPostsContext = `\n\n■ 過去の投稿（重複回避用）:\n以下と同じ内容・同じ切り口・同じ表現は絶対に避けてください。新しい視点で書いてください。\n${summaries}`;
+        recentPostContents = recentPosts.map((p) => p.content);
       }
     } catch {
       // Non-fatal
@@ -99,13 +98,12 @@ export async function POST(request: Request) {
     // 8. プロンプト生成
     // ai_optimized のときは learningContext をプロンプトビルダーに直接渡す（主軸として使う）
     const { system, user } = splitMode
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined });
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
 
     // ai_optimized 以外は学習データを補助的に後付け
     const systemWithLearning = system
-      + (style !== "ai_optimized" && learningContext ? "\n" + learningContext : "")
-      + recentPostsContext;
+      + (style !== "ai_optimized" && learningContext ? "\n" + learningContext : "");
 
     // 8. AI生成
     const maxTokens = splitMode ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);

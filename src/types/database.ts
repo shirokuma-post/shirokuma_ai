@@ -11,6 +11,10 @@ export type PostStyle =
   | "provocative"
   | "flip"
   | "poison_story"
+  | "boyaki"
+  | "yueki"
+  | "jitsuwa"
+  | "gyakubari"
   | "mix"
   | "ai_optimized";
 export type PlanType = "free" | "pro" | "business";

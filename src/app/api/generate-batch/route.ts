@@ -111,13 +111,12 @@ export async function POST(request: Request) {
       } catch {}
     }
 
-    // Recent posts
-    let recentContext = "";
+    // Recent posts (for anti-repetition)
+    let recentPostContents: string[] = [];
     try {
       const { data: rp } = await supabase.from("posts").select("content").eq("user_id", user.id).in("status", ["posted", "draft"]).order("created_at", { ascending: false }).limit(10);
       if (rp?.length) {
-        const summaries = rp.map((p: any, i: number) => `${i + 1}. ${p.content.slice(0, 80)}`).join("\n");
-        recentContext = `\n\n■ 過去の投稿（重複回避用）:\n${summaries}`;
+        recentPostContents = rp.map((p: any) => p.content);
       }
     } catch {}
 
@@ -138,13 +137,12 @@ export async function POST(request: Request) {
       const snsTarget = refSlot.target;
 
       const { system, user: userPrompt } = isSplit
-        ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget })
-        : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined });
+        ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
+        : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
 
       const systemFull = system
         + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
-        + trendContext
-        + recentContext;
+        + trendContext;
 
       // Batch prompt
       const contents = await generateBatch(provider, decryptedKey, systemFull, isSplit, postLength, count);

@@ -509,11 +509,15 @@ export default function SettingsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">スタイル</label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { id: "mix", name: "ミックス", desc: "4スタイルからランダム" },
+                      { id: "mix", name: "ミックス", desc: "8スタイルからランダム" },
                       { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
                       { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
                       { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
                       { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
+                      { id: "boyaki", name: "ぼやき", desc: "ふと思った独り言" },
+                      { id: "yueki", name: "有益", desc: "使えるTips・ノウハウ" },
+                      { id: "jitsuwa", name: "実体験風", desc: "リアルな体験エピソード" },
+                      { id: "gyakubari", name: "逆張り質問", desc: "当然に疑問を投げる" },
                       { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
                       ...customStyles.map(cs => ({ id: cs.id, name: cs.name, desc: cs.desc })),
                     ].map((s) => (
