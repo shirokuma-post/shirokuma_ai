@@ -29,10 +29,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const pathname = request.nextUrl.pathname;
+
   // Redirect unauthenticated users to login
   if (
     !user &&
-    request.nextUrl.pathname.startsWith("/dashboard")
+    (pathname.startsWith("/dashboard") || pathname.startsWith("/onboarding"))
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
@@ -40,10 +42,39 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && request.nextUrl.pathname.startsWith("/auth")) {
+  if (user && pathname.startsWith("/auth")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
+  }
+
+  // オンボーディング未完了のユーザーをリダイレクト
+  // dashboardにアクセスしようとしたとき、cookieでチェック
+  if (user && pathname.startsWith("/dashboard")) {
+    const onboardingDone = request.cookies.get("onboarding_completed")?.value;
+    if (onboardingDone === undefined) {
+      // cookieがない場合、DBを確認してcookieをセット
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarding_completed")
+        .eq("id", user.id)
+        .single();
+
+      if (profile && !profile.onboarding_completed) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/onboarding";
+        return NextResponse.redirect(url);
+      }
+      // オンボーディング完了済み → cookieセットしてキャッシュ
+      if (profile?.onboarding_completed) {
+        supabaseResponse.cookies.set("onboarding_completed", "1", {
+          path: "/",
+          maxAge: 60 * 60 * 24 * 365,
+          httpOnly: true,
+          sameSite: "lax",
+        });
+      }
+    }
   }
 
   return supabaseResponse;

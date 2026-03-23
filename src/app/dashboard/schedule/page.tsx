@@ -44,15 +44,18 @@ const CHARACTERS = [
 ];
 
 const LENGTHS = [
-  { id: "short", label: "短い", minPlan: "pro" as UserPlan },
-  { id: "standard", label: "標準", minPlan: "free" as UserPlan },
-  { id: "long", label: "長い", minPlan: "pro" as UserPlan },
+  { id: "short", label: "短い" },
+  { id: "standard", label: "標準" },
+  { id: "long", label: "長い" },
 ];
 
 const TARGETS = [
   { id: "x" as const, label: "X" },
   { id: "threads" as const, label: "Threads" },
 ];
+
+// Free: 3種、Pro+: 全6種
+const FREE_STYLES = ["mix", "paradigm_break", "provocative"];
 
 const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
 
@@ -69,6 +72,7 @@ export default function SchedulePage() {
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
+  const [userSnsProvider, setUserSnsProvider] = useState<"x" | "threads" | null>(null);
 
   useEffect(() => { fetchSchedule(); fetchPlan(); fetchStyleDefaults(); }, []);
 
@@ -92,7 +96,11 @@ export default function SchedulePage() {
   async function fetchPlan() {
     try {
       const [dashRes, keyRes] = await Promise.all([fetch("/api/dashboard"), fetch("/api/apikeys")]);
-      if (dashRes.ok) { const d = await dashRes.json(); setUserPlan((d.plan?.id || "free").toLowerCase() as UserPlan); }
+      if (dashRes.ok) {
+        const d = await dashRes.json();
+        setUserPlan((d.plan?.id || "free").toLowerCase() as UserPlan);
+        if (d.snsProvider) setUserSnsProvider(d.snsProvider);
+      }
       if (keyRes.ok) {
         const kd = await keyRes.json();
         const aiKey = (kd.keys || []).find((k: any) => ["anthropic", "openai", "google"].includes(k.provider));
@@ -150,7 +158,12 @@ export default function SchedulePage() {
   }
 
   function addSlot() {
-    setSlots(prev => [...prev, { ...defaultSlot }]);
+    const newSlot: Slot = {
+      ...defaultSlot,
+      target: userSnsProvider || "x",
+      length: userSnsProvider === "threads" ? "long" : "standard",
+    };
+    setSlots(prev => [...prev, newSlot]);
     setExpandedSlot(slots.length);
   }
 
@@ -165,7 +178,24 @@ export default function SchedulePage() {
   const canAddMore = maxSlots === -1 || slots.length < maxSlots;
   const canUseCharacter = planLevel(userPlan) >= 1;
   const canUseSplit = planLevel(userPlan) >= 2;
-  const canUseThreads = planLevel(userPlan) >= 2;
+  const isMultiSns = planLevel(userPlan) >= 2; // Business: 両方使える
+  const allowedStyles = planLevel(userPlan) >= 1 ? STYLES : STYLES.filter(s => FREE_STYLES.includes(s.id));
+
+  // プラン×SNSで使える長さ
+  function isLengthAllowed(lengthId: string): boolean {
+    if (userPlan === "business") return true;
+    if (userPlan === "pro") {
+      return userSnsProvider === "threads" ? ["standard", "long"].includes(lengthId) : ["short", "standard"].includes(lengthId);
+    }
+    // Free: SNSに応じた1種のみ
+    return userSnsProvider === "threads" ? lengthId === "long" : lengthId === "standard";
+  }
+
+  // SNSターゲットが使えるか
+  function canUseTarget(targetId: "x" | "threads"): boolean {
+    if (isMultiSns) return true;
+    return userSnsProvider === targetId;
+  }
 
   // ---- コスト予測 ----
   const costInput: CostInput = {
@@ -244,31 +274,44 @@ export default function SchedulePage() {
 
                       {/* Target */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">投稿先</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          投稿先
+                          {!isMultiSns && <span className="ml-1 text-gray-400 text-xs">（{userSnsProvider === "threads" ? "Threads" : "X"}固定）</span>}
+                        </label>
                         <div className="flex gap-1.5">
                           {TARGETS.map((t) => {
-                            const needsBusiness = t.id !== "x" && !canUseThreads;
+                            const locked = !canUseTarget(t.id);
                             return (
                               <button key={t.id}
-                                onClick={() => needsBusiness ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id, ...(t.id === "x" ? { split: false } : {}) })}
+                                onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id, ...(t.id === "x" ? { split: false } : {}) })}
                                 className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
                                   (slot.target === t.id ? "border-brand-500 bg-brand-50 text-brand-700" :
-                                    needsBusiness ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
+                                    locked ? "border-gray-100 bg-white text-gray-400" :
                                       "border-gray-200 text-gray-600 hover:border-gray-300")}
-                              >{t.label}{needsBusiness && " 🔒"}</button>
+                                disabled={locked}
+                              >{t.label}{locked && " 🔒"}</button>
                             );
                           })}
+                          {!isMultiSns && <span className="text-xs text-amber-600 ml-1">Businessで両方解放</span>}
                         </div>
                       </div>
 
                       {/* Style */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">投稿スタイル</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">投稿スタイル{planLevel(userPlan) < 1 && <span className="ml-1 text-gray-400">(Proで全種解放)</span>}</label>
                         <div className="flex flex-wrap gap-1.5">
-                          {STYLES.map((s) => (
-                            <button key={s.id} onClick={() => updateSlot(i, { style: s.id })}
-                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.style === s.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{s.label}</button>
-                          ))}
+                          {STYLES.map((s) => {
+                            const locked = !allowedStyles.some(a => a.id === s.id);
+                            return (
+                              <button key={s.id}
+                                onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { style: s.id })}
+                                className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                                  (slot.style === s.id ? "border-brand-500 bg-brand-50 text-brand-700" :
+                                    locked ? "border-gray-100 bg-white text-gray-400" :
+                                      "border-gray-200 text-gray-600 hover:border-gray-300")}
+                              >{s.label}{locked && " 🔒"}</button>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -290,13 +333,13 @@ export default function SchedulePage() {
                           <label className="block text-xs font-medium text-gray-600 mb-1">長さ</label>
                           <div className="flex gap-1.5">
                             {LENGTHS.map((l) => {
-                              const locked = planLevel(userPlan) < planLevel(l.minPlan);
+                              const locked = !isLengthAllowed(l.id);
                               return (
                                 <button key={l.id}
                                   onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { length: l.id })}
                                   className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
                                     (slot.length === l.id ? "border-brand-500 bg-brand-50 text-brand-700" :
-                                      locked ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
+                                      locked ? "border-gray-100 bg-white text-gray-400" :
                                         "border-gray-200 text-gray-600 hover:border-gray-300")}
                                 >{l.label}{locked && " 🔒"}</button>
                               );

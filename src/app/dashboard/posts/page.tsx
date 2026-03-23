@@ -69,6 +69,7 @@ export default function PostsPage() {
   const [dailyLimit, setDailyLimit] = useState(3);
   const [limitReached, setLimitReached] = useState(false);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
+  const [userSnsProvider, setUserSnsProvider] = useState<SnsTarget | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalPosts, setTotalPosts] = useState(0);
@@ -103,6 +104,10 @@ export default function PostsPage() {
         const limit = data.plan?.postsPerDay ?? 3;
         setDailyLimit(limit);
         setLimitReached((data.plan?.postsRemaining ?? 1) === 0);
+        if (data.snsProvider) {
+          setUserSnsProvider(data.snsProvider);
+          setSnsTab(data.snsProvider);
+        }
       }
     } catch (e) { console.error(e); }
   }, []);
@@ -306,8 +311,10 @@ export default function PostsPage() {
   }
 
   const canUseCharacter = planLevel(userPlan) >= 1;
-  const canUseThreads = planLevel(userPlan) >= 2;
+  const isMultiSns = planLevel(userPlan) >= 2;
   const canUseSplit = planLevel(userPlan) >= 2;
+  const FREE_STYLE_IDS = ["mix", "paradigm_break", "provocative"];
+  const allowedStyleOptions = planLevel(userPlan) >= 1 ? STYLE_OPTIONS : STYLE_OPTIONS.filter(s => FREE_STYLE_IDS.includes(s.id));
 
   const isX = snsTab === "x";
   const currentStyle = isX ? xStyle : thStyle;
@@ -465,35 +472,44 @@ export default function PostsPage() {
           <p className="text-xs text-gray-400">スロットとは別に、1件ずつ生成して即投稿</p>
         </CardHeader>
         <CardContent>
-          {/* SNS Tab */}
+          {/* SNS Tab - Free/Pro: 選択したSNSのみ、Business: 両方 */}
           <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit mb-4">
-            <button onClick={() => setSnsTab("x")}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "x" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-              <span className="w-4 h-4 bg-black text-white rounded text-[10px] flex items-center justify-center font-bold">X</span>
-              X 向け
-            </button>
-            {canUseThreads ? (
+            {(isMultiSns || userSnsProvider === "x") && (
+              <button onClick={() => setSnsTab("x")}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "x" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                <span className="w-4 h-4 bg-black text-white rounded text-[10px] flex items-center justify-center font-bold">X</span>
+                X 向け
+              </button>
+            )}
+            {(isMultiSns || userSnsProvider === "threads") && (
               <button onClick={() => setSnsTab("threads")}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "threads" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
                 <span className="w-4 h-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded text-[10px] flex items-center justify-center font-bold">T</span>
                 Threads 向け
               </button>
-            ) : (
-              <button onClick={() => window.location.href = "/pricing"}
-                className="px-4 py-2 rounded-md text-sm font-medium text-gray-400 flex items-center gap-1.5 hover:bg-amber-50">
-                Threads 🔒 <span className="text-xs text-brand-600">Business</span>
-              </button>
+            )}
+            {!isMultiSns && (
+              <span className="px-3 py-2 text-xs text-gray-400">Businessで両SNS解放</span>
             )}
           </div>
 
           <div className="space-y-4">
             {/* Style */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2">投稿スタイル</label>
+              <label className="block text-xs font-medium text-gray-500 mb-2">投稿スタイル{planLevel(userPlan) < 1 && <span className="ml-1 text-gray-300">（Proで全種解放）</span>}</label>
               <div className="flex flex-wrap gap-1.5">
-                {STYLE_OPTIONS.map((s) => (
-                  <button key={s.id} onClick={() => setCurrentStyle(s.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentStyle === s.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={s.desc}>{s.name}</button>
-                ))}
+                {STYLE_OPTIONS.map((s) => {
+                  const locked = !allowedStyleOptions.some(a => a.id === s.id);
+                  return (
+                    <button key={s.id}
+                      onClick={() => locked ? (window.location.href = "/pricing") : setCurrentStyle(s.id)}
+                      className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                        (currentStyle === s.id ? "border-brand-500 bg-brand-50 text-brand-700" :
+                          locked ? "border-gray-100 bg-white text-gray-400" :
+                            "border-gray-200 text-gray-600 hover:border-gray-300")}
+                      title={s.desc}>{s.name}{locked && " 🔒"}</button>
+                  );
+                })}
               </div>
             </div>
 

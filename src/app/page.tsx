@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function LandingPage() {
   return (
@@ -7,9 +8,7 @@ export default function LandingPage() {
       <header className="border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">S</span>
-            </div>
+            <Image src="/shirokuma-logo.png" alt="SHIROKUMA Post" width={32} height={32} className="rounded-lg" />
             <span className="font-bold text-gray-900">SHIROKUMA</span>
             <span className="text-brand-600 font-medium">Post</span>
           </div>
@@ -25,15 +24,16 @@ export default function LandingPage() {
       {/* Hero */}
       <main className="max-w-6xl mx-auto px-6">
         <section className="py-24 text-center">
+          <Image src="/shirokuma-hero.png" alt="SHIROKUMA Post" width={320} height={175} className="mx-auto mb-8" priority />
           <h1 className="text-5xl font-bold text-gray-900 mb-6 leading-tight">
             あなたの思想を、
             <br />
             <span className="text-brand-600">自動で世界に届ける。</span>
           </h1>
           <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto">
-            コンセプトを登録するだけ。AIが投稿を生成し、X・Threadsへ自動配信。
+            コンセプトを登録するだけ。AIが投稿を生成し、自動配信。
             <br />
-            BYOK（自前APIキー）だから、ランニングコストほぼゼロ。
+            Threadsなら完全無料で始められる。
           </p>
           <Link
             href="/auth/login"

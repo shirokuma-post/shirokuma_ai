@@ -1,7 +1,7 @@
 -- =====================================================
 -- SHIROKUMA Post - 統合スキーマ（現在の正）
 -- 新規環境構築時はこれ1つを実行すればOK
--- 最終更新: 2026-03-20
+-- 最終更新: 2026-03-23
 -- =====================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -22,6 +22,8 @@ CREATE TABLE public.profiles (
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   stripe_subscription_status TEXT DEFAULT 'none',
+  sns_provider TEXT CHECK (sns_provider IN ('x', 'threads')),
+  onboarding_completed BOOLEAN NOT NULL DEFAULT false,
   style_defaults JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -92,6 +94,8 @@ CREATE TABLE public.posts (
 
 CREATE INDEX idx_posts_user ON public.posts(user_id, created_at DESC);
 CREATE INDEX idx_posts_status ON public.posts(status, scheduled_at);
+CREATE INDEX idx_posts_draft_scheduled
+  ON public.posts(user_id, status, scheduled_at) WHERE status = 'draft';
 
 -- =====================================================
 -- 5. Schedule Configs（スロットベース自動投稿設定）

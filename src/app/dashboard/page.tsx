@@ -7,12 +7,14 @@ import Link from "next/link";
 
 interface DashboardData {
   user: { email: string; displayName: string };
+  snsProvider: "x" | "threads" | null;
   setup: {
     hasConcept: boolean;
     conceptTitle: string | null;
     hasAiKey: boolean;
     hasXKey: boolean;
     hasThreadsKey: boolean;
+    hasSnsKey: boolean;
   };
   recentPosts: any[];
   totalPosts: number;
@@ -50,10 +52,11 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
+  const snsLabel = data.snsProvider === "threads" ? "Threads" : "X";
   const setupItems = [
     { label: "マイコンセプト", done: data.setup.hasConcept, detail: data.setup.conceptTitle },
     { label: "AI APIキー", done: data.setup.hasAiKey },
-    { label: "X APIキー", done: data.setup.hasXKey },
+    { label: `${snsLabel} APIキー`, done: data.setup.hasSnsKey },
   ];
 
   const setupComplete = setupItems.every(i => i.done);
@@ -130,7 +133,7 @@ export default function DashboardPage() {
               </div>
               <h3 className="font-semibold text-gray-900">APIキー設定</h3>
               <p className="text-sm text-gray-500 mt-1">
-                {data.setup.hasAiKey && data.setup.hasXKey ? "AI・X 設定済み" : data.setup.hasAiKey ? "AI設定済み / X未設定" : "未設定 — タップして設定"}
+                {data.setup.hasAiKey && data.setup.hasSnsKey ? `AI・${snsLabel} 設定済み` : data.setup.hasAiKey ? `AI設定済み / ${snsLabel}未設定` : "未設定 — タップして設定"}
               </p>
             </CardContent>
           </Card>

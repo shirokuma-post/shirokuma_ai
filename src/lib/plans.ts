@@ -1,16 +1,31 @@
+import type { SnsProvider, PostStyle } from "@/types/database";
+import type { PostLength } from "@/lib/ai/generate-post";
+
+// =====================================================
+// プラン定義
+// Free/Pro: SNS1つ選択（ロック）
+// Business: 両方利用可能
+// =====================================================
+
 export const PLANS = {
   free: {
     name: "Free",
     price: 0,
     postsPerDay: 3,
     maxScheduleTimes: 3,
-    threadsEnabled: false,
+    multiSns: false,              // 1つのSNSのみ
+    styles: ["mix", "paradigm_break", "provocative"] as PostStyle[],
+    characterEnabled: false,
+    customCharacterEnabled: false,
+    splitEnabled: false,
+    learningEnabled: false,
+    trendEnabled: false,
     features: [
+      "X or Threads（1つ選択）",
       "1日3投稿",
       "スケジュール3枠",
-      "AIコンセプト生成",
-      "X投稿",
-      "投稿プレビュー・編集",
+      "3スタイル",
+      "一括生成・承認WF",
     ],
   },
   pro: {
@@ -18,14 +33,20 @@ export const PLANS = {
     price: 980,
     postsPerDay: 10,
     maxScheduleTimes: 10,
-    threadsEnabled: false,
+    multiSns: false,              // 1つのSNSのみ
+    styles: ["mix", "paradigm_break", "provocative", "flip", "poison_story", "ai_optimized"] as PostStyle[],
+    characterEnabled: true,
+    customCharacterEnabled: false,
+    splitEnabled: false,
+    learningEnabled: true,
+    trendEnabled: false,
     features: [
+      "X or Threads（1つ選択）",
       "1日10投稿",
       "スケジュール10枠",
-      "投稿スタイル全種",
+      "全6スタイル",
       "キャラ設定（10種）",
-      "短い投稿",
-      "投稿履歴・分析",
+      "Learning（バズ分析）",
     ],
   },
   business: {
@@ -33,21 +54,29 @@ export const PLANS = {
     price: 2980,
     postsPerDay: -1,
     maxScheduleTimes: -1,
-    threadsEnabled: true,
+    multiSns: true,               // 両方利用可能
+    styles: ["mix", "paradigm_break", "provocative", "flip", "poison_story", "ai_optimized"] as PostStyle[],
+    characterEnabled: true,
+    customCharacterEnabled: true,
+    splitEnabled: true,
+    learningEnabled: true,
+    trendEnabled: true,
     features: [
+      "X + Threads 両方対応",
       "無制限投稿",
       "スケジュール無制限",
-      "Threads対応",
+      "全6スタイル",
+      "キャラ設定（10種 + カスタム）",
       "分割投稿（フック→リプ）",
-      "長文投稿",
-      "キャラ設定（10種）",
-      "複数コンセプト管理",
-      "優先サポート",
+      "Learning（バズ分析）",
+      "トレンド注入",
     ],
   },
 } as const;
 
 export type PlanId = keyof typeof PLANS;
+
+// --- ヘルパー関数 ---
 
 export function getPostLimit(plan: PlanId): number {
   return PLANS[plan].postsPerDay;
@@ -63,6 +92,80 @@ export function canPost(plan: PlanId, dailyCount: number): boolean {
   return dailyCount < limit;
 }
 
+/** Business のみ両方のSNSを使える */
+export function canUseMultiSns(plan: PlanId): boolean {
+  return PLANS[plan].multiSns;
+}
+
+/** そのプランで使えるスタイル一覧 */
+export function getAllowedStyles(plan: PlanId): readonly PostStyle[] {
+  return PLANS[plan].styles;
+}
+
+/** キャラ設定が使えるか（Pro+） */
+export function canUseCharacter(plan: PlanId): boolean {
+  return PLANS[plan].characterEnabled;
+}
+
+/** カスタムキャラ/スタイルが使えるか（Business） */
+export function canUseCustomCharacter(plan: PlanId): boolean {
+  return PLANS[plan].customCharacterEnabled;
+}
+
+/** 分割投稿が使えるか（Business） */
+export function canUseSplit(plan: PlanId): boolean {
+  return PLANS[plan].splitEnabled;
+}
+
+/** Learning機能が使えるか（Pro+） */
+export function canUseLearning(plan: PlanId): boolean {
+  return PLANS[plan].learningEnabled;
+}
+
+/** トレンド注入が使えるか（Business） */
+export function canUseTrend(plan: PlanId): boolean {
+  return PLANS[plan].trendEnabled;
+}
+
+/**
+ * SNS選択に応じたデフォルトの投稿長さ
+ * X → standard (120-140字)
+ * Threads → long (400-500字)
+ */
+export function getDefaultLength(snsProvider: SnsProvider): PostLength {
+  return snsProvider === "threads" ? "long" : "standard";
+}
+
+/**
+ * プラン × SNSで使える投稿長さ
+ * Free: SNSに応じた1種のみ
+ * Pro: X→short+standard / Threads→standard+long
+ * Business: 全て
+ */
+export function getAllowedLengths(plan: PlanId, snsProvider: SnsProvider | null): PostLength[] {
+  if (plan === "business") return ["short", "standard", "long"];
+  if (plan === "pro") {
+    return snsProvider === "threads" ? ["standard", "long"] : ["short", "standard"];
+  }
+  // Free: 1種のみ
+  return snsProvider === "threads" ? ["long"] : ["standard"];
+}
+
+/**
+ * 特定のSNSプロバイダーを使えるかチェック
+ * Business: 常にtrue
+ * Free/Pro: 選択したSNSのみ
+ */
+export function canUseSnsProvider(
+  plan: PlanId,
+  userSnsProvider: SnsProvider | null,
+  targetProvider: SnsProvider
+): boolean {
+  if (plan === "business") return true;
+  return userSnsProvider === targetProvider;
+}
+
+// 後方互換
 export function canUseThreads(plan: PlanId): boolean {
-  return PLANS[plan].threadsEnabled;
+  return plan === "business";
 }
