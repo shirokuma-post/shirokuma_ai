@@ -328,22 +328,16 @@ export default function SettingsPage() {
                 {structuredSummary && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-gray-900">構造化サマリー（投稿生成に使用）</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">あなたの思想</h3>
                       <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 rounded-full">適用中</span>
                     </div>
                     <div className="space-y-2 text-xs text-gray-700">
                       {structuredSummary.axiom && (
-                        <div><span className="font-semibold text-gray-900">公理:</span> {structuredSummary.axiom}</div>
-                      )}
-                      {structuredSummary.structure && (
-                        <div><span className="font-semibold text-gray-900">構造:</span> {structuredSummary.structure}</div>
-                      )}
-                      {structuredSummary.logic && (
-                        <div><span className="font-semibold text-gray-900">ロジック:</span> {structuredSummary.logic}</div>
+                        <div><span className="font-semibold text-gray-900">ビジョン:</span> {structuredSummary.axiom}</div>
                       )}
                       {structuredSummary.weapons?.length > 0 && (
                         <div>
-                          <span className="font-semibold text-gray-900">武器:</span>
+                          <span className="font-semibold text-gray-900">切り口:</span>
                           <ul className="ml-4 mt-1 space-y-0.5">
                             {structuredSummary.weapons.map((w: string, i: number) => (
                               <li key={i}>• {w}</li>
@@ -352,16 +346,10 @@ export default function SettingsPage() {
                         </div>
                       )}
                       {structuredSummary.stance && (
-                        <div><span className="font-semibold text-gray-900">スタンス:</span> {structuredSummary.stance}</div>
-                      )}
-                      {structuredSummary.method && (
-                        <div><span className="font-semibold text-gray-900">メソッド:</span> {structuredSummary.method}</div>
-                      )}
-                      {structuredSummary.voice && (
-                        <div><span className="font-semibold text-gray-900">声:</span> {structuredSummary.voice}</div>
+                        <div><span className="font-semibold text-gray-900">主張:</span> {structuredSummary.stance}</div>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 mt-3">この構造化データが投稿生成プロンプトに使われます。再構造化したい場合は「AIで構造化」を再度押してください。</p>
+                    <p className="text-xs text-gray-400 mt-3">この他にも理論構造・トーンなどが投稿生成に反映されています。再分析したい場合は「AIで構造化」を再度押してください。</p>
                   </div>
                 )}
               </div>

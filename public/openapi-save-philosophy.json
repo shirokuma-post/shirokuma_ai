@@ -1,0 +1,77 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SHIROKUMA Post - 思想まとめ",
+    "description": "しろくまポストに思想・理論データを保存するためのAPI",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://shirokuma-post.vercel.app"
+    }
+  ],
+  "paths": {
+    "/api/gpts/save-philosophy": {
+      "post": {
+        "operationId": "savePhilosophy",
+        "summary": "思想・理論データをしろくまポストに保存する",
+        "description": "ユーザーとの対話で構造化した思想データをしろくまポストに保存します。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["link_code", "title", "content"],
+                "properties": {
+                  "link_code": {
+                    "type": "string",
+                    "description": "しろくまポストの画面に表示されている6桁の連携コード"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "思想・理論のタイトル（例: 「逆算思考論」「没入仕事術」）"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "思想・理論の全文テキスト（ユーザーの発言や対話のまとめ）"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "構造化サマリー（JSON文字列）。axiom, structure, logic, weapons, stance, method, voice の7フィールド"
+                  },
+                  "core_concepts": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "コアコンセプトのリスト（例: [\"逆算思考\", \"没入状態\", \"環境設計\"]）"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "philosophy_id": { "type": "string" },
+                    "philosophy_title": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "連携コードが無効または期限切れ"
+          }
+        }
+      }
+    }
+  }
+}

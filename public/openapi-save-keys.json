@@ -1,0 +1,89 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SHIROKUMA Post - API接続",
+    "description": "しろくまポストにAPIキーを保存するためのAPI",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://shirokuma-post.vercel.app"
+    }
+  ],
+  "paths": {
+    "/api/gpts/save-keys": {
+      "post": {
+        "operationId": "saveApiKeys",
+        "summary": "APIキーをしろくまポストに保存する",
+        "description": "ユーザーの連携コードを使って、各種APIキーをしろくまポストに暗号化保存します。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["link_code", "keys"],
+                "properties": {
+                  "link_code": {
+                    "type": "string",
+                    "description": "しろくまポストの画面に表示されている6桁の連携コード"
+                  },
+                  "keys": {
+                    "type": "array",
+                    "description": "保存するAPIキーのリスト",
+                    "items": {
+                      "type": "object",
+                      "required": ["provider", "key_name", "value"],
+                      "properties": {
+                        "provider": {
+                          "type": "string",
+                          "enum": ["anthropic", "openai", "google", "x", "threads"],
+                          "description": "APIプロバイダー名"
+                        },
+                        "key_name": {
+                          "type": "string",
+                          "description": "キーの識別名（例: api_key, api_secret, access_token, access_secret, app_id, app_secret）"
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "APIキーの値"
+                        },
+                        "metadata": {
+                          "type": "object",
+                          "description": "追加情報（任意）"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "saved_keys": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "連携コードが無効または期限切れ"
+          }
+        }
+      }
+    }
+  }
+}

@@ -172,7 +172,23 @@ CREATE INDEX idx_daily_trends_fetched
   ON public.daily_trends(fetched_at DESC);
 
 -- =====================================================
--- 9. RLS Policies
+-- 9. GPTs連携コード
+-- =====================================================
+CREATE TABLE public.gpts_link_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  code TEXT NOT NULL UNIQUE,
+  purpose TEXT NOT NULL CHECK (purpose IN ('api_keys', 'philosophy')),
+  used BOOLEAN NOT NULL DEFAULT false,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_gpts_link_codes_code ON public.gpts_link_codes(code) WHERE used = false;
+CREATE INDEX idx_gpts_link_codes_user ON public.gpts_link_codes(user_id);
+
+-- =====================================================
+-- 10. RLS Policies
 -- =====================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
@@ -182,6 +198,7 @@ ALTER TABLE public.schedule_configs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_executions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.learning_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_trends ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gpts_link_codes ENABLE ROW LEVEL SECURITY;
 
 -- ユーザー自身のデータのみ操作可能
 CREATE POLICY "Users manage own profile"
@@ -201,12 +218,18 @@ CREATE POLICY "Users manage own learning posts"
 
 CREATE POLICY "Anyone can read trends"
   ON public.daily_trends FOR SELECT USING (true);
+CREATE POLICY "Users manage own link codes"
+  ON public.gpts_link_codes FOR ALL USING (auth.uid() = user_id);
 
 -- service_role用（cronハンドラー）
 CREATE POLICY "Service can read all schedules"
   ON public.schedule_configs FOR SELECT USING (true);
 CREATE POLICY "Service can insert executions"
   ON public.schedule_executions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Service can read link codes"
+  ON public.gpts_link_codes FOR SELECT USING (true);
+CREATE POLICY "Service can update link codes"
+  ON public.gpts_link_codes FOR UPDATE USING (true);
 
 -- =====================================================
 -- 9. Triggers
