@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -33,24 +34,57 @@ const navItems = [
   },
 ];
 
+const supportItems = [
+  {
+    label: "API接続ガイド",
+    href: "https://chatgpt.com/g/g-69c283b258308191b4ab8f49cf339cd7-sirokumahosuto-apijie-sok-asisutanto",
+    external: true,
+  },
+  {
+    label: "思想まとめガイド",
+    href: "https://chatgpt.com/g/g-69c281c0b1f08191aaecac0f4c4100a9-sirokumahosuto-maikonsehutozuo-cheng-asisutanto",
+    external: true,
+  },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  return (
-    <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 flex flex-col z-30">
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/auth/login");
+    } catch {
+      // フォールバック: cookieを直接削除してリダイレクト
+      router.push("/auth/login");
+    }
+  }
+
+  const sidebarContent = (
+    <>
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-gray-100">
-        <Link href="/dashboard" className="flex items-center gap-2">
+      <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+        <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
           <Image src="/shirokuma-logo.png" alt="SHIROKUMA Post" width={36} height={36} className="rounded-lg" />
           <div>
             <span className="font-bold text-gray-900">SHIROKUMA</span>
             <span className="text-brand-600 font-medium ml-1">Post</span>
           </div>
         </Link>
+        {/* モバイル閉じるボタン */}
+        <button onClick={() => setMobileOpen(false)} className="lg:hidden p-1 text-gray-400 hover:text-gray-600">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href ||
@@ -60,6 +94,7 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setMobileOpen(false)}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive
@@ -74,22 +109,103 @@ export function Sidebar() {
                 stroke="currentColor"
                 strokeWidth={1.5}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d={item.icon}
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
               </svg>
               {item.label}
             </Link>
           );
         })}
+
+        {/* プラン */}
+        <Link
+          href="/pricing"
+          onClick={() => setMobileOpen(false)}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+        >
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+          </svg>
+          Plan
+        </Link>
+
+        {/* サポートセクション */}
+        <div className="pt-4 mt-4 border-t border-gray-100">
+          <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">サポート</p>
+          {supportItems.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            >
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              <span className="truncate">{item.label}</span>
+            </a>
+          ))}
+          <Link
+            href="/tutorial"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            初期設定ガイド
+          </Link>
+        </div>
       </nav>
 
-      {/* Footer */}
-      <div className="px-4 py-3 border-t border-gray-100">
-        <p className="text-xs text-gray-400">SHIROKUMA Post v0.1.0</p>
+      {/* Footer: ログアウト */}
+      <div className="px-3 py-3 border-t border-gray-100 space-y-2">
+        <button
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+        >
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          {loggingOut ? "ログアウト中..." : "ログアウト"}
+        </button>
+        <p className="px-3 text-xs text-gray-400">SHIROKUMA Post v0.1.0</p>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* モバイルヘッダー（ハンバーガーメニュー） */}
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-gray-200 flex items-center px-4 z-40">
+        <button onClick={() => setMobileOpen(true)} className="p-2 text-gray-600 hover:text-gray-900">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <Link href="/dashboard" className="flex items-center gap-2 ml-2">
+          <Image src="/shirokuma-logo.png" alt="SHIROKUMA Post" width={28} height={28} className="rounded-lg" />
+          <span className="font-bold text-gray-900 text-sm">SHIROKUMA <span className="text-brand-600">Post</span></span>
+        </Link>
+      </header>
+
+      {/* デスクトップサイドバー */}
+      <aside className="hidden lg:flex fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 flex-col z-30">
+        {sidebarContent}
+      </aside>
+
+      {/* モバイルオーバーレイ */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          {/* 背景オーバーレイ */}
+          <div className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
+          {/* サイドバー */}
+          <aside className="absolute left-0 top-0 h-full w-72 bg-white shadow-xl flex flex-col animate-slide-in">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
