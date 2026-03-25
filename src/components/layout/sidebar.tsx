@@ -41,7 +41,7 @@ const supportItems = [
     external: true,
   },
   {
-    label: "思想まとめガイド",
+    label: "マイコンセプト作成ガイド",
     href: "https://chatgpt.com/g/g-69c281c0b1f08191aaecac0f4c4100a9-sirokumahosuto-maikonsehutozuo-cheng-asisutanto",
     external: true,
   },

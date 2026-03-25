@@ -14,7 +14,7 @@ const GPTS_URLS = {
 const PROMO_TEMPLATES = {
   x: `しろくまポストを使い始めました🐻‍❄️
 
-AIが自分の思想をベースに投稿を自動生成してくれるサービス。
+AIが自分の想いをベースに投稿を自動生成してくれるサービス。
 API持ち込み型だから月額無料〜で使えるのが最高。
 
 セットアップも全部GPTsが対話でやってくれて楽すぎた。
@@ -22,7 +22,7 @@ API持ち込み型だから月額無料〜で使えるのが最高。
 https://shirokuma-post.com`,
   threads: `しろくまポストを使い始めました🐻‍❄️
 
-AIが自分の思想や価値観をベースに、SNS投稿を自動生成してくれるサービスです。
+AIが自分の想いや価値観をベースに、SNS投稿を自動生成してくれるサービスです。
 
 APIキーを自分で持ち込む形式なので、月額無料から使えるのが嬉しいポイント。
 セットアップもGPTsが全部対話で進めてくれるので、迷うことがなかったです。
@@ -50,7 +50,7 @@ export default function TutorialPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // 初期状態チェック: 既にAPI keyや思想がある場合はスキップ
+  // 初期状態チェック: 既にAPI keyやコンセプトがある場合はスキップ
   useEffect(() => {
     (async () => {
       try {
@@ -204,7 +204,7 @@ export default function TutorialPage() {
   const steps: { id: Step; label: string; num: number }[] = [
     { id: "sns", label: "SNS選択", num: 1 },
     { id: "api_keys", label: "API接続", num: 2 },
-    { id: "philosophy", label: "思想登録", num: 3 },
+    { id: "philosophy", label: "想い登録", num: 3 },
     { id: "schedule", label: "完了", num: 4 },
   ];
 
@@ -337,10 +337,10 @@ export default function TutorialPage() {
           </div>
         )}
 
-        {/* Step 3: 思想まとめ */}
+        {/* Step 3: マイコンセプト登録 */}
         {currentStep === "philosophy" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Step 3: あなたの思想を登録</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Step 3: あなたの想いを登録</h2>
             <p className="text-sm text-gray-500 mb-4">
               GPTsが対話であなたの考え・価値観・理論を引き出し、投稿生成に使える形に構造化します。
             </p>
@@ -351,7 +351,7 @@ export default function TutorialPage() {
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
-                  思想の登録が完了しました
+                  マイコンセプトの登録が完了しました
                 </p>
               </div>
             ) : philosophyCode ? (
@@ -367,7 +367,7 @@ export default function TutorialPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
-                  思想まとめGPTsを開く
+                  マイコンセプト作成アシスタントを開く
                 </button>
 
                 <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -439,7 +439,7 @@ export default function TutorialPage() {
                     </svg>
                   )}
                   <span className={philosophyStatus === "completed" ? "text-green-800" : "text-gray-500"}>
-                    思想登録 {philosophyStatus === "completed" ? "" : "（コンセプト画面から設定可能）"}
+                    マイコンセプト登録 {philosophyStatus === "completed" ? "" : "（コンセプト画面から設定可能）"}
                   </span>
                 </div>
               </div>

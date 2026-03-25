@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 
-// GPTsから呼ばれる: 連携コードで認証 → 思想データ保存
+// GPTsから呼ばれる: 連携コードで認証 → マイコンセプト保存
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
     const userId = linkCode.user_id;
 
-    // 既存のアクティブ思想を非アクティブに
+    // 既存のアクティブコンセプトを非アクティブに
     await supabase
       .from("philosophies")
       .update({ is_active: false })
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 新しい思想を保存
+    // 新しいコンセプトを保存
     const { data, error } = await supabase
       .from("philosophies")
       .insert({
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
-      return gptResponse({ error: `思想の保存に失敗しました: ${error.message}` }, 500);
+      return gptResponse({ error: `マイコンセプトの保存に失敗しました: ${error.message}` }, 500);
     }
 
     // コードを使用済みにする
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
 
     return gptResponse({
       success: true,
-      message: `思想「${data.title}」を保存しました。しろくまポストに反映されています。`,
+      message: `マイコンセプト「${data.title}」を保存しました。しろくまポストに反映されています。`,
       philosophy_id: data.id,
       philosophy_title: data.title,
     });

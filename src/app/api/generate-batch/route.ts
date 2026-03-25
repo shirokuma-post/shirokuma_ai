@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       .eq("is_active", true)
       .single();
 
-    if (!philosophy) return NextResponse.json({ error: "マイコンセプトが未設定です。Concept画面で思想・理論を登録してください。" }, { status: 400 });
+    if (!philosophy) return NextResponse.json({ error: "マイコンセプトが未設定です。設定画面からあなたの想いを登録してください。" }, { status: 400 });
 
     // Get AI key
     const { data: aiKeys } = await supabase

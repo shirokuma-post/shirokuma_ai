@@ -26,7 +26,7 @@ export default function LandingPage() {
         <section className="py-24 text-center">
           <Image src="/shirokuma-hero.png" alt="SHIROKUMA Post" width={320} height={175} className="mx-auto mb-8" priority />
           <h1 className="text-5xl font-bold text-gray-900 mb-6 leading-tight">
-            あなたの思想を、
+            あなたの想いを、
             <br />
             <span className="text-brand-600">自動で世界に届ける。</span>
           </h1>
@@ -53,7 +53,7 @@ export default function LandingPage() {
             },
             {
               title: "AIが投稿を生成",
-              desc: "常識破壊、毒舌問いかけ、ひっくり返し。あなたの思想を、刺さる言葉に変換。",
+              desc: "共感、問いかけ、ストーリー。あなたの想いを、届く言葉に変換。",
               icon: "M13 10V3L4 14h7v7l9-11h-7z",
             },
             {

@@ -3,7 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import { generateWithAnthropic, generateWithOpenAI, generateWithGoogle } from "@/lib/ai/generate-post";
 
-const STRUCTURE_PROMPT_SYSTEM = `あなたは、ユーザーが書いた自由記述のテキスト（思想、理論、ビジネス哲学、価値観など）を分析し、SNS投稿生成AIが使いやすい構造化フォーマットに変換するアシスタントです。
+const STRUCTURE_PROMPT_SYSTEM = `あなたは、ユーザーが書いた自由記述のテキスト（想い、価値観、ビジネス哲学、理論など）を分析し、SNS投稿生成AIが使いやすい構造化フォーマットに変換するアシスタントです。
 
 以下の7カテゴリで構造化してください。すべて埋まらなくてOK。テキストから読み取れるものだけ埋めてください。
 

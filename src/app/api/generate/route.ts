@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       snsTarget?: SnsTarget;
     };
 
-    // 3. ユーザーの思想を取得
+    // 3. ユーザーのマイコンセプトを取得
     const { data: philosophy } = await supabase
       .from("philosophies")
       .select("*")
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       .single();
 
     if (!philosophy) {
-      return NextResponse.json({ error: "思想が設定されていません。ダッシュボードから設定してください。" }, { status: 400 });
+      return NextResponse.json({ error: "マイコンセプトが設定されていません。設定画面から登録してください。" }, { status: 400 });
     }
 
     // 4. AI APIキーを取得

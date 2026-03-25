@@ -328,7 +328,7 @@ export default function SettingsPage() {
                 {structuredSummary && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-gray-900">あなたの思想</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">あなたの想い</h3>
                       <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 rounded-full">適用中</span>
                     </div>
                     <div className="space-y-2 text-xs text-gray-700">
