@@ -45,7 +45,10 @@ export async function GET() {
   const hasXKey = apiKeys?.some(k => k.provider === "x") || false;
   const hasThreadsKey = apiKeys?.some(k => k.provider === "threads") || false;
   const snsProvider = (profile?.sns_provider || null) as "x" | "threads" | null;
-  const hasSnsKey = snsProvider === "x" ? hasXKey : snsProvider === "threads" ? hasThreadsKey : false;
+  // Businessプランは両方使えるので、どちらかのSNSキーがあればOK
+  const hasSnsKey = plan === "business"
+    ? (hasXKey || hasThreadsKey)
+    : snsProvider === "x" ? hasXKey : snsProvider === "threads" ? hasThreadsKey : false;
 
   const { data: recentPosts } = await supabase
     .from("posts")

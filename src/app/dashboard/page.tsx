@@ -7,6 +7,7 @@ import Link from "next/link";
 
 interface DashboardData {
   user: { email: string; displayName: string };
+  plan?: { id: string; name: string; [key: string]: any };
   snsProvider: "x" | "threads" | null;
   setup: {
     hasConcept: boolean;
@@ -52,11 +53,15 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  const snsLabel = data.snsProvider === "threads" ? "Threads" : "X";
+  const isBusiness = data.plan?.id === "business";
+  const snsLabel = isBusiness ? "SNS" : data.snsProvider === "threads" ? "Threads" : "X";
+  const snsDetail = isBusiness
+    ? [data.setup.hasXKey && "X", data.setup.hasThreadsKey && "Threads"].filter(Boolean).join(" + ") || undefined
+    : undefined;
   const setupItems = [
     { label: "マイコンセプト", done: data.setup.hasConcept, detail: data.setup.conceptTitle },
     { label: "AI APIキー", done: data.setup.hasAiKey },
-    { label: `${snsLabel} APIキー`, done: data.setup.hasSnsKey },
+    { label: `${snsLabel} APIキー`, done: data.setup.hasSnsKey, detail: snsDetail },
   ];
 
   const setupComplete = setupItems.every(i => i.done);
