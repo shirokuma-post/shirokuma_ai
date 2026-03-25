@@ -499,13 +499,13 @@ export default function SettingsPage() {
                     {[
                       { id: "mix", name: "ミックス", desc: "8スタイルからランダム" },
                       { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
-                      { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
+                      { id: "provocative", name: "問いかけ", desc: "一緒に考えようという問い" },
                       { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
-                      { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
+                      { id: "poison_story", name: "ストーリー", desc: "短い物語にオチがある" },
                       { id: "boyaki", name: "ぼやき", desc: "ふと思った独り言" },
                       { id: "yueki", name: "有益", desc: "使えるTips・ノウハウ" },
                       { id: "jitsuwa", name: "実体験風", desc: "リアルな体験エピソード" },
-                      { id: "gyakubari", name: "逆張り質問", desc: "当然に疑問を投げる" },
+                      { id: "kyoukan", name: "共感", desc: "「わかる」を代弁する" },
                       { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
                       ...customStyles.map(cs => ({ id: cs.id, name: cs.name, desc: cs.desc })),
                     ].map((s) => (
@@ -523,15 +523,15 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-2 gap-2">
                     {[
                       { id: "none", name: "なし", desc: "キャラなし（デフォルト）" },
-                      { id: "gal", name: "ギャル", desc: "ノリで真理を突く" },
+                      { id: "gal", name: "ギャル", desc: "カジュアルに共感ベースで" },
                       { id: "philosopher", name: "哲学者", desc: "静かに深く問う" },
                       { id: "housewife", name: "主婦", desc: "生活者目線で鋭く" },
-                      { id: "yankee", name: "元ヤン", desc: "荒いけど筋が通る" },
-                      { id: "sensei", name: "熱血教師", desc: "熱く語りかける" },
+                      { id: "salaryman", name: "サラリーマン", desc: "あるある系の気づき" },
+                      { id: "senpai", name: "先輩", desc: "経験を共有する" },
                       { id: "otaku", name: "オタク", desc: "早口で本質を突く" },
                       { id: "gyaru_mama", name: "ギャルママ", desc: "軽いのに深い" },
-                      { id: "host", name: "ホスト", desc: "甘い言葉に毒" },
-                      { id: "monk", name: "坊主", desc: "悟りから冷静に" },
+                      { id: "kouhai", name: "後輩", desc: "素直に驚く発見型" },
+                      { id: "grandma", name: "おばあちゃん", desc: "穏やかに人生の知恵" },
                       { id: "child", name: "子ども", desc: "無邪気に刺す" },
                       ...customCharacters.map(cc => ({ id: cc.id, name: cc.name, desc: cc.desc })),
                     ].map((c) => (

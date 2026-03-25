@@ -11,6 +11,26 @@ const GPTS_URLS = {
   philosophy: "https://chatgpt.com/g/g-69c281c0b1f08191aaecac0f4c4100a9-sirokumahosuto-maikonsehutozuo-cheng-asisutanto",
 };
 
+const PROMO_TEMPLATES = {
+  x: `しろくまポストを使い始めました🐻‍❄️
+
+AIが自分の思想をベースに投稿を自動生成してくれるサービス。
+API持ち込み型だから月額無料〜で使えるのが最高。
+
+セットアップも全部GPTsが対話でやってくれて楽すぎた。
+
+https://shirokuma-post.com`,
+  threads: `しろくまポストを使い始めました🐻‍❄️
+
+AIが自分の思想や価値観をベースに、SNS投稿を自動生成してくれるサービスです。
+
+APIキーを自分で持ち込む形式なので、月額無料から使えるのが嬉しいポイント。
+セットアップもGPTsが全部対話で進めてくれるので、迷うことがなかったです。
+
+気になる方はぜひ👇
+https://shirokuma-post.com`,
+};
+
 export default function TutorialPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<Step>("sns");
@@ -21,6 +41,11 @@ export default function TutorialPage() {
   const [philosophyCode, setPhilosophyCode] = useState<string | null>(null);
   const [apiKeyStatus, setApiKeyStatus] = useState<"idle" | "active" | "completed">("idle");
   const [philosophyStatus, setPhilosophyStatus] = useState<"idle" | "active" | "completed">("idle");
+
+  // プロモ
+  const [promoPosting, setPromoPosting] = useState(false);
+  const [promoResult, setPromoResult] = useState<"idle" | "success" | "error" | "already_used">("idle");
+  const [promoError, setPromoError] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -146,11 +171,41 @@ export default function TutorialPage() {
     router.push("/dashboard");
   }
 
+  async function handlePromoPost() {
+    if (!snsProvider) return;
+    setPromoPosting(true);
+    setPromoError("");
+    try {
+      const text = PROMO_TEMPLATES[snsProvider];
+      const res = await fetch("/api/promo/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error?.includes("既に利用済み")) {
+          setPromoResult("already_used");
+        } else {
+          setPromoResult("error");
+          setPromoError(data.error || "投稿に失敗しました");
+        }
+        return;
+      }
+      setPromoResult("success");
+    } catch {
+      setPromoResult("error");
+      setPromoError("通信エラーが発生しました");
+    } finally {
+      setPromoPosting(false);
+    }
+  }
+
   const steps: { id: Step; label: string; num: number }[] = [
     { id: "sns", label: "SNS選択", num: 1 },
     { id: "api_keys", label: "API接続", num: 2 },
     { id: "philosophy", label: "思想登録", num: 3 },
-    { id: "schedule", label: "スケジュール", num: 4 },
+    { id: "schedule", label: "完了", num: 4 },
   ];
 
   const stepIndex = steps.findIndex(s => s.id === currentStep);
@@ -343,52 +398,133 @@ export default function TutorialPage() {
           </div>
         )}
 
-        {/* Step 4: スケジュール設定 */}
+        {/* Step 4: 完了 + プロモオファー */}
         {currentStep === "schedule" && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Step 4: スケジュール設定</h2>
-            <p className="text-sm text-gray-500 mb-6">
-              あとはダッシュボードで投稿スケジュールを設定すれば、自動投稿が始まります。
-            </p>
+            <div className="text-center mb-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-bold text-gray-900">セットアップ完了！</h2>
+              <p className="text-sm text-gray-500 mt-1">ダッシュボードで投稿スケジュールを設定しましょう</p>
+            </div>
 
-            <div className="bg-brand-50 border border-brand-200 rounded-xl p-4 mb-6">
-              <h3 className="text-sm font-bold text-brand-900 mb-2">セットアップ完了項目</h3>
+            {/* セットアップ完了項目 */}
+            <div className="bg-gray-50 rounded-xl p-4 mb-5">
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   {apiKeyStatus === "completed" ? (
-                    <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01" />
                     </svg>
                   )}
                   <span className={apiKeyStatus === "completed" ? "text-green-800" : "text-gray-500"}>
-                    API接続 {apiKeyStatus === "completed" ? "" : "（未設定 - 設定画面から設定可能）"}
+                    API接続 {apiKeyStatus === "completed" ? "" : "（設定画面から設定可能）"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   {philosophyStatus === "completed" ? (
-                    <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   ) : (
-                    <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01" />
                     </svg>
                   )}
                   <span className={philosophyStatus === "completed" ? "text-green-800" : "text-gray-500"}>
-                    思想登録 {philosophyStatus === "completed" ? "" : "（未設定 - コンセプト画面から設定可能）"}
+                    思想登録 {philosophyStatus === "completed" ? "" : "（コンセプト画面から設定可能）"}
                   </span>
                 </div>
               </div>
             </div>
 
+            {/* プロモオファー */}
+            {promoResult === "idle" && snsProvider && (
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 mb-5">
+                <div className="flex items-start gap-3 mb-3">
+                  <span className="text-2xl">🎁</span>
+                  <div>
+                    <h3 className="text-sm font-bold text-amber-900">限定キャンペーン</h3>
+                    <p className="text-sm text-amber-800 mt-1">
+                      しろくまポストについて{snsProvider === "x" ? "X" : "Threads"}で投稿すると、
+                      <span className="font-bold">Businessプランが3ヶ月無料</span>で使えます！
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white/70 rounded-lg p-3 mb-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                  {PROMO_TEMPLATES[snsProvider]}
+                </div>
+
+                <button
+                  onClick={handlePromoPost}
+                  disabled={promoPosting}
+                  className="w-full py-3 bg-amber-600 text-white rounded-xl font-semibold text-sm hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  {promoPosting ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      投稿中...
+                    </>
+                  ) : (
+                    <>
+                      投稿してBusinessプランをGET！
+                    </>
+                  )}
+                </button>
+
+                <p className="text-xs text-amber-700 mt-2 text-center">
+                  ※ {snsProvider === "x" ? "X" : "Threads"}に上記テキストが投稿されます
+                </p>
+              </div>
+            )}
+
+            {/* プロモ成功 */}
+            {promoResult === "success" && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-5 text-center">
+                <span className="text-3xl">🎉</span>
+                <h3 className="text-sm font-bold text-green-900 mt-2">Businessプランが適用されました！</h3>
+                <p className="text-sm text-green-700 mt-1">3ヶ月間、全機能をお楽しみください</p>
+              </div>
+            )}
+
+            {/* プロモ既に使用済み */}
+            {promoResult === "already_used" && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
+                <p className="text-sm text-gray-600 text-center">このキャンペーンは既に利用済みです</p>
+              </div>
+            )}
+
+            {/* プロモエラー */}
+            {promoResult === "error" && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5">
+                <p className="text-sm text-red-700 text-center">{promoError}</p>
+                <button onClick={() => setPromoResult("idle")} className="text-xs text-red-600 underline mt-2 block mx-auto">
+                  もう一度試す
+                </button>
+              </div>
+            )}
+
             <button onClick={finishTutorial}
               className="w-full py-3 bg-brand-600 text-white rounded-xl font-semibold text-sm hover:bg-brand-700 transition-colors">
               ダッシュボードへ
             </button>
+
+            {promoResult === "idle" && (
+              <button onClick={finishTutorial} className="w-full text-center text-sm text-gray-400 hover:text-gray-600 mt-3">
+                スキップしてダッシュボードへ
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -23,13 +23,13 @@ function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" 
 const STYLES = [
   { id: "mix", label: "ミックス" },
   { id: "paradigm_break", label: "常識破壊" },
-  { id: "provocative", label: "毒舌問いかけ" },
+  { id: "provocative", label: "問いかけ" },
   { id: "flip", label: "ひっくり返し" },
-  { id: "poison_story", label: "毒入りストーリー" },
+  { id: "poison_story", label: "ストーリー" },
   { id: "boyaki", label: "ぼやき" },
   { id: "yueki", label: "有益" },
   { id: "jitsuwa", label: "実体験風" },
-  { id: "gyakubari", label: "逆張り質問" },
+  { id: "kyoukan", label: "共感" },
   { id: "ai_optimized", label: "AI最適化" },
 ];
 
@@ -38,12 +38,12 @@ const CHARACTERS = [
   { id: "gal", label: "ギャル" },
   { id: "philosopher", label: "哲学者" },
   { id: "housewife", label: "主婦" },
-  { id: "yankee", label: "元ヤン" },
-  { id: "sensei", label: "熱血教師" },
+  { id: "salaryman", label: "サラリーマン" },
+  { id: "senpai", label: "先輩" },
   { id: "otaku", label: "オタク" },
   { id: "gyaru_mama", label: "ギャルママ" },
-  { id: "host", label: "ホスト" },
-  { id: "monk", label: "坊主" },
+  { id: "kouhai", label: "後輩" },
+  { id: "grandma", label: "おばあちゃん" },
   { id: "child", label: "子ども" },
 ];
 
@@ -59,7 +59,8 @@ const TARGETS = [
 ];
 
 // Free: 5種、Pro+: 全10種
-const FREE_STYLES = ["mix", "paradigm_break", "provocative", "boyaki", "yueki"];
+const FREE_STYLES = ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"];
+const FREE_CHARACTERS = ["none", "salaryman", "gal", "child"];
 
 const TREND_CATEGORY_OPTIONS = [
   { id: "general", label: "総合" },
@@ -194,7 +195,7 @@ export default function SchedulePage() {
 
   const maxSlots = PLAN_MAX_SLOTS[userPlan];
   const canAddMore = maxSlots === -1 || slots.length < maxSlots;
-  const canUseCharacter = planLevel(userPlan) >= 1;
+  const canUseAllCharacters = planLevel(userPlan) >= 1;
   const canUseSplit = planLevel(userPlan) >= 2;
   const isMultiSns = planLevel(userPlan) >= 2; // Business: 両方使える
   const allowedStyles = planLevel(userPlan) >= 1 ? STYLES : STYLES.filter(s => FREE_STYLES.includes(s.id));
@@ -335,13 +336,13 @@ export default function SchedulePage() {
 
                       {/* Character */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">キャラ設定{!canUseCharacter && <span className="ml-1 text-gray-400">(Pro🔒)</span>}</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">キャラ設定</label>
                         <div className="flex flex-wrap gap-1.5">
-                          {(canUseCharacter ? CHARACTERS : CHARACTERS.slice(0, 1)).map((c) => (
+                          {(canUseAllCharacters ? CHARACTERS : CHARACTERS.filter(c => FREE_CHARACTERS.includes(c.id))).map((c) => (
                             <button key={c.id} onClick={() => updateSlot(i, { character: c.id })}
                               className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.character === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{c.label}</button>
                           ))}
-                          {!canUseCharacter && <a href="/pricing" className="px-3 py-1.5 text-xs text-amber-600 hover:text-amber-700">🔒 Proで解放 →</a>}
+                          {!canUseAllCharacters && <a href="/pricing" className="px-3 py-1.5 text-xs text-amber-600 hover:text-amber-700">+7種 Proで解放 →</a>}
                         </div>
                       </div>
 

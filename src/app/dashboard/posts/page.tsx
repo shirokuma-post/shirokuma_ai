@@ -7,16 +7,20 @@ import { Button } from "@/components/ui/button";
 type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; created_at: string };
 type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
-type CharacterType = "none"|"gal"|"philosopher"|"housewife"|"yankee"|"sensei"|"otaku"|"gyaru_mama"|"host"|"monk"|"child";
+type CharacterType = "none"|"gal"|"philosopher"|"housewife"|"salaryman"|"senpai"|"otaku"|"gyaru_mama"|"kouhai"|"grandma"|"child";
 type SnsTarget = "x" | "threads";
 
-const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "毒舌問いかけ", flip: "ひっくり返し", poison_story: "毒入りストーリー", mix: "ミックス", ai_optimized: "AI最適化" };
+const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "問いかけ", flip: "ひっくり返し", poison_story: "ストーリー", boyaki: "ぼやき", yueki: "有益", jitsuwa: "実体験風", kyoukan: "共感", mix: "ミックス", ai_optimized: "AI最適化" };
 const STYLE_OPTIONS = [
-  { id: "mix", name: "ミックス", desc: "4スタイルからランダム" },
+  { id: "mix", name: "ミックス", desc: "8スタイルからランダム" },
   { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
-  { id: "provocative", name: "毒舌問いかけ", desc: "核心を突く問い" },
+  { id: "provocative", name: "問いかけ", desc: "一緒に考えようという問い" },
   { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
-  { id: "poison_story", name: "毒入りストーリー", desc: "毒を仕込んだ物語" },
+  { id: "poison_story", name: "ストーリー", desc: "短い物語にオチがある" },
+  { id: "boyaki", name: "ぼやき", desc: "ふと思った独り言" },
+  { id: "yueki", name: "有益", desc: "使えるTips・ノウハウ" },
+  { id: "jitsuwa", name: "実体験風", desc: "リアルな体験エピソード" },
+  { id: "kyoukan", name: "共感", desc: "「わかる」を代弁する" },
   { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
 ];
 const LENGTH_OPTIONS_X: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
@@ -29,17 +33,18 @@ const LENGTH_OPTIONS_THREADS: { id: PostLength; label: string; desc: string; min
 ];
 const CHARACTER_OPTIONS: { id: CharacterType; label: string; desc: string }[] = [
   { id: "none", label: "なし", desc: "デフォルト" },
-  { id: "gal", label: "ギャル", desc: "ノリで真理突く" },
+  { id: "gal", label: "ギャル", desc: "カジュアルに共感" },
   { id: "philosopher", label: "哲学者", desc: "静かに深く" },
   { id: "housewife", label: "主婦", desc: "生活者目線" },
-  { id: "yankee", label: "元ヤン", desc: "荒いけど正論" },
-  { id: "sensei", label: "熱血教師", desc: "熱く語る" },
+  { id: "salaryman", label: "サラリーマン", desc: "あるある系" },
+  { id: "senpai", label: "先輩", desc: "経験を共有" },
   { id: "otaku", label: "オタク", desc: "早口で本質" },
   { id: "gyaru_mama", label: "ギャルママ", desc: "軽いのに深い" },
-  { id: "host", label: "ホスト", desc: "甘い毒" },
-  { id: "monk", label: "坊主", desc: "悟りの刃" },
+  { id: "kouhai", label: "後輩", desc: "素直に驚く" },
+  { id: "grandma", label: "おばあちゃん", desc: "穏やかな知恵" },
   { id: "child", label: "子ども", desc: "無邪気に刺す" },
 ];
+const FREE_CHARACTER_IDS = ["none", "salaryman", "gal", "child"];
 function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" ? 1 : 2; }
 
 export default function PostsPage() {
@@ -310,10 +315,10 @@ export default function PostsPage() {
     return <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>;
   }
 
-  const canUseCharacter = planLevel(userPlan) >= 1;
+  const canUseAllCharacters = planLevel(userPlan) >= 1;
   const isMultiSns = planLevel(userPlan) >= 2;
   const canUseSplit = planLevel(userPlan) >= 2;
-  const FREE_STYLE_IDS = ["mix", "paradigm_break", "provocative"];
+  const FREE_STYLE_IDS = ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"];
   const allowedStyleOptions = planLevel(userPlan) >= 1 ? STYLE_OPTIONS : STYLE_OPTIONS.filter(s => FREE_STYLE_IDS.includes(s.id));
 
   const isX = snsTab === "x";
@@ -515,23 +520,13 @@ export default function PostsPage() {
 
             {/* Character */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2">キャラ設定{!canUseCharacter && <span className="ml-1 text-gray-300">（Proプラン以上）</span>}</label>
-              {!canUseCharacter ? (
-                <div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {CHARACTER_OPTIONS.slice(0, 4).map((c) => (
-                      <button key={c.id} onClick={() => { if (c.id !== "none") window.location.href = "/pricing"; }} className={"px-3 py-1.5 rounded-md text-xs font-medium border " + (c.id === "none" ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50")}>{c.label}{c.id !== "none" && " 🔒"}</button>
-                    ))}
-                    <span className="px-3 py-1.5 text-xs text-gray-300">+7種類</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {CHARACTER_OPTIONS.map((c) => (
-                    <button key={c.id} onClick={() => setCurrentCharacter(c.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentCharacter === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={c.desc}>{c.label}</button>
-                  ))}
-                </div>
-              )}
+              <label className="block text-xs font-medium text-gray-500 mb-2">キャラ設定</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(canUseAllCharacters ? CHARACTER_OPTIONS : CHARACTER_OPTIONS.filter(c => FREE_CHARACTER_IDS.includes(c.id))).map((c) => (
+                  <button key={c.id} onClick={() => setCurrentCharacter(c.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentCharacter === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={c.desc}>{c.label}</button>
+                ))}
+                {!canUseAllCharacters && <a href="/pricing" className="px-3 py-1.5 text-xs text-amber-600 hover:text-amber-700">+7種 Proで解放 →</a>}
+              </div>
             </div>
 
             {/* Length + Split */}

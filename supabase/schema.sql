@@ -25,6 +25,10 @@ CREATE TABLE public.profiles (
   sns_provider TEXT CHECK (sns_provider IN ('x', 'threads')),
   onboarding_completed BOOLEAN NOT NULL DEFAULT false,
   style_defaults JSONB DEFAULT '{}'::jsonb,
+  promo_type TEXT,
+  promo_expires_at TIMESTAMPTZ,
+  promo_notified_7d BOOLEAN NOT NULL DEFAULT false,
+  promo_notified_0d BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

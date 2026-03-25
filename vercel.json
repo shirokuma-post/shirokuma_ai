@@ -11,6 +11,14 @@
     {
       "path": "/api/cron/fetch-rss",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/promo-notify",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/promo-expire",
+      "schedule": "0 1 * * *"
     }
   ]
 }

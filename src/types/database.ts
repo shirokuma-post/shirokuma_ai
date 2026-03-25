@@ -14,7 +14,7 @@ export type PostStyle =
   | "boyaki"
   | "yueki"
   | "jitsuwa"
-  | "gyakubari"
+  | "kyoukan"
   | "mix"
   | "ai_optimized";
 export type PlanType = "free" | "pro" | "business";

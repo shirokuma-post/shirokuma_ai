@@ -15,8 +15,9 @@ export const PLANS = {
     postsPerDay: 3,
     maxScheduleTimes: 3,
     multiSns: false,              // 1つのSNSのみ
-    styles: ["mix", "paradigm_break", "provocative", "boyaki", "yueki"] as PostStyle[],
-    characterEnabled: false,
+    styles: ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"] as PostStyle[],
+    characterEnabled: true,
+    freeCharacters: ["none", "salaryman", "gal", "child"],
     customCharacterEnabled: false,
     splitEnabled: false,
     learningEnabled: false,
@@ -25,7 +26,7 @@ export const PLANS = {
       "X or Threads（1つ選択）",
       "1日3投稿",
       "スケジュール3枠",
-      "5スタイル",
+      "5スタイル・3キャラ",
       "一括生成・承認WF",
     ],
   },
@@ -35,7 +36,7 @@ export const PLANS = {
     postsPerDay: 10,
     maxScheduleTimes: 10,
     multiSns: false,              // 1つのSNSのみ
-    styles: ["mix", "paradigm_break", "provocative", "flip", "poison_story", "boyaki", "yueki", "jitsuwa", "gyakubari", "ai_optimized"] as PostStyle[],
+    styles: ["mix", "paradigm_break", "provocative", "flip", "poison_story", "boyaki", "yueki", "jitsuwa", "kyoukan", "ai_optimized"] as PostStyle[],
     characterEnabled: true,
     customCharacterEnabled: false,
     splitEnabled: false,
@@ -56,7 +57,7 @@ export const PLANS = {
     postsPerDay: -1,
     maxScheduleTimes: -1,
     multiSns: true,               // 両方利用可能
-    styles: ["mix", "paradigm_break", "provocative", "flip", "poison_story", "boyaki", "yueki", "jitsuwa", "gyakubari", "ai_optimized"] as PostStyle[],
+    styles: ["mix", "paradigm_break", "provocative", "flip", "poison_story", "boyaki", "yueki", "jitsuwa", "kyoukan", "ai_optimized"] as PostStyle[],
     characterEnabled: true,
     customCharacterEnabled: true,
     splitEnabled: true,

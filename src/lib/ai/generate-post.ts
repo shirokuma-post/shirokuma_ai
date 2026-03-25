@@ -8,18 +8,20 @@ const STYLE_PROMPTS: Record<PostStyle, string> = {
 - みんなが信じている「当たり前」をぶっ壊す投稿
 - 「え、それ逆じゃない？」と思わせる
 - 冒頭で常識を提示 → 一撃で否定するパターンが基本`,
-  provocative: `毒舌問いかけスタイル:
-- 読んだ人が「うっ…」と胸に刺さる問いかけ
-- 核心を突く。言い訳できない問い
-- 「お前、本当にそれでいいのか？」的な圧`,
+  provocative: `問いかけスタイル:
+- 自分に問いかけるように書く。読者を攻撃しない
+- 「〜って、本当にそうなのかな」「ふと思ったんだけど」
+- 核心を突く問いだけど、一緒に考えようという空気
+- 上から説教ではなく、隣で考え込んでる感じ`,
   flip: `ひっくり返しスタイル:
 - 一般的に「良い」とされていることの裏面を見せる
 - 視点を180度変える。美徳の闇を暴く
 - 「〇〇が素晴らしいって？ 裏を見ろ」的な展開`,
-  poison_story: `毒入りストーリースタイル:
-- 3〜5行の超短い物語に毒を仕込む
-- 最後の一文でハッとさせるオチ
-- 「ある日〜」「友達が〜」で始めてもOK`,
+  poison_story: `ショートストーリースタイル:
+- 3〜5行の超短い物語
+- オチのバリエーション: ハッとする気づき、温かい余韻、切ない真実、毒のある一言
+- 「ある日〜」「友達が〜」「電車で〜」で始めてもOK
+- 毒だけじゃなく、じんわり来る話もあり`,
   boyaki: `ぼやきスタイル:
 - ふと思ったことをそのまま呟く
 - 結論を出さない。問いかけでもない。ただの独り言
@@ -35,14 +37,15 @@ const STYLE_PROMPTS: Record<PostStyle, string> = {
   jitsuwa: `実体験風スタイル:
 - 「昨日〜した」「この前〜があった」で始まる
 - 架空だがリアリティある体験エピソード
-- オチで思想の核心に繋げる
+- オチで想いの核心に繋げる
 - 日記っぽい。人間味がある
 - 体験 → 気づき → 一言で締める`,
-  gyakubari: `逆張り質問スタイル:
-- 世間が当然だと思っていることに「それ本当？」と疑問を投げる
-- 答えは出さない。考えさせて終わる
-- 「〜って言うけど、誰が決めたの？」
-- 短くていい。疑問だけで完結してもOK`,
+  kyoukan: `共感スタイル:
+- 読者が「あるある」「わかる」と思える内容
+- 「〜ってあるよね」「みんな言わないけど、実は〜だよね」
+- 読者の気持ちを代弁する。言語化してあげる
+- 上から教えるんじゃなくて「俺もそうだよ」のスタンス
+- 共感 → ちょっとした気づき、の流れ`,
   mix: "上記8スタイルからランダムに選んで投稿。",
   ai_optimized: "AI最適化スタイル: 過去に伸びた投稿の学習データを分析し、最もエンゲージメントが高いスタイル・構造・フックを自動選択して投稿を生成する。",
 };
@@ -50,7 +53,7 @@ const STYLE_PROMPTS: Record<PostStyle, string> = {
 // ランダムスタイル候補（mix用）
 const RANDOM_STYLES: PostStyle[] = [
   "paradigm_break", "provocative", "flip", "poison_story",
-  "boyaki", "yueki", "jitsuwa", "gyakubari",
+  "boyaki", "yueki", "jitsuwa", "kyoukan",
 ];
 
 const TIME_TONES: Record<string, string> = {
@@ -68,14 +71,14 @@ export const LENGTH_CONFIGS: Record<PostLength, { label: string; description: st
 };
 
 // キャラ設定
-export type CharacterType = "none" | "gal" | "philosopher" | "housewife" | "yankee" | "sensei" | "otaku" | "gyaru_mama" | "host" | "monk" | "child";
+export type CharacterType = "none" | "gal" | "philosopher" | "housewife" | "salaryman" | "senpai" | "otaku" | "gyaru_mama" | "kouhai" | "grandma" | "child";
 
 export const CHARACTERS: Record<CharacterType, { label: string; description: string; prompt: string }> = {
   none: { label: "なし", description: "キャラなし（デフォルト）", prompt: "" },
   gal: {
     label: "ギャル",
-    description: "テンション高め、絵文字なし、ノリで真理を突く",
-    prompt: "ギャルの口調で書く。「〜じゃん」「マジで」「ウケる」などカジュアルな言葉。でも言ってることは核心を突いてる。軽いノリで深いことを言う。絵文字は使わない。",
+    description: "カジュアルに同意を求めながら本質をつく",
+    prompt: "ギャルの口調で書く。「〜じゃん？」「わかるー」「それってさぁ」など同意を求めるカジュアルな言葉。断定より共感ベース。軽いノリで深いことを言う。読者と同じ目線。絵文字は使わない。",
   },
   philosopher: {
     label: "哲学者",
@@ -87,15 +90,15 @@ export const CHARACTERS: Record<CharacterType, { label: string; description: str
     description: "生活者目線で鋭く本質を突く",
     prompt: "主婦の生活者目線で書く。「ねぇ、これって〜じゃない？」「スーパーの帰りに気づいたんだけど」など日常から真理を引き出す口調。",
   },
-  yankee: {
-    label: "元ヤン",
-    description: "荒っぽいけど筋が通ってる",
-    prompt: "元ヤンの口調。「てめぇら」「ふざけんな」「筋通せ」など荒い言葉だが、言ってることは正論。人情味あり。",
+  salaryman: {
+    label: "サラリーマン",
+    description: "通勤電車で考えた、あるある系の気づき",
+    prompt: "普通のサラリーマンの口調。「わかるわ…」「あるある」「電車で思ったんだけど」。特別じゃない日常から出てくる気づき。共感ベースで、上から目線じゃない。疲れてるけど考えることはやめてない感じ。",
   },
-  sensei: {
-    label: "熱血教師",
-    description: "生徒に語りかけるように熱く",
-    prompt: "熱血教師の口調。「いいか、お前ら」「目を覚ませ」「お前にはできる」など。熱いが押しつけがましくなく、本気で語りかける感じ。",
+  senpai: {
+    label: "先輩",
+    description: "「俺もそうだったけどさ」と経験を共有する",
+    prompt: "少し年上の先輩の口調。「俺もそうだったけどさ」「最初はみんなそうだよ」「ひとつだけ言えるのは」。説教じゃなく経験の共有。失敗談も混ぜる。上からじゃなく横から、でも少しだけ先を歩いてる感じ。",
   },
   otaku: {
     label: "オタク",
@@ -107,15 +110,15 @@ export const CHARACTERS: Record<CharacterType, { label: string; description: str
     description: "子育て経験から得た人生の真理",
     prompt: "ギャルママの口調。元ギャルだけど子育てで悟った感じ。「アタシさぁ」「子ども見てて思ったんだけど」。軽いのに深い。",
   },
-  host: {
-    label: "ホスト",
-    description: "甘い言葉に毒を仕込む",
-    prompt: "ホストの口調。「俺が本当のこと教えてあげる」「みんな分かってないんだよね」。一見優しいけど核心をえぐる。",
+  kouhai: {
+    label: "後輩",
+    description: "「え、これすごくないですか？」素直に驚く発見型",
+    prompt: "後輩の口調。「え、これすごくないですか？」「今日知ったんですけど」「自分まだ全然わかってないんですけど」。素直な驚きと発見。知ったかぶりしない。読者と一緒に学んでる感じ。下からの視座。",
   },
-  monk: {
-    label: "坊主",
-    description: "悟りの境地から冷静に語る",
-    prompt: "お坊さんの口調。「〜でございます」「煩悩とは」。穏やかだが言ってることは刃物のように鋭い。悟った人の冷静さ。",
+  grandma: {
+    label: "おばあちゃん",
+    description: "人生の知恵を穏やかに語る",
+    prompt: "おばあちゃんの口調。「あのねぇ」「昔はね」「まぁ、なんとかなるよ」。人生の知恵を穏やかに語る。説教じゃない。温かい。ゆっくりだけど芯がある。「大丈夫だよ」と言ってくれる安心感。",
   },
   child: {
     label: "子ども",

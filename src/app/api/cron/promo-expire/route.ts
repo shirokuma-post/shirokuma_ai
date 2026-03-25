@@ -1,0 +1,69 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+// ---------- Service client (bypasses RLS) ----------
+function getServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+// =============================================================
+// Promo Expire Cron
+// promo_expires_at を過ぎたユーザーを free プランにダウングレード
+// =============================================================
+export async function GET(request: Request) {
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = getServiceClient();
+  const now = new Date().toISOString();
+
+  try {
+    // プロモ期限切れ && まだ business のユーザーを取得
+    const { data: expiredUsers, error: fetchError } = await supabase
+      .from("profiles")
+      .select("id, email, display_name")
+      .not("promo_type", "is", null)
+      .lt("promo_expires_at", now)
+      .eq("plan", "business")
+      // Stripe有料サブスクリプション中は除外
+      .or("stripe_subscription_status.is.null,stripe_subscription_status.eq.none,stripe_subscription_status.eq.canceled");
+
+    if (fetchError) throw fetchError;
+
+    if (!expiredUsers || expiredUsers.length === 0) {
+      return NextResponse.json({ message: "No expired promos", downgraded: 0 });
+    }
+
+    let downgradedCount = 0;
+
+    for (const user of expiredUsers) {
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ plan: "free" })
+        .eq("id", user.id);
+
+      if (updateError) {
+        console.error(`[promo-expire] Failed to downgrade user ${user.id}:`, updateError);
+        continue;
+      }
+
+      downgradedCount++;
+      console.log(`[promo-expire] Downgraded user ${user.id} (${user.email}) to free plan`);
+    }
+
+    return NextResponse.json({
+      message: "OK",
+      downgraded: downgradedCount,
+      total: expiredUsers.length,
+    });
+  } catch (e: any) {
+    console.error("[promo-expire] Error:", e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
