@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { VoiceProfile } from "@/lib/ai/generate-post";
+import TagInput from "@/components/TagInput";
 
 type AiProvider = "anthropic" | "openai" | "google";
 
@@ -760,17 +761,21 @@ export default function SettingsPage() {
                               onChange={(e) => setVoiceProfile({ ...voiceProfile, customSecondPerson: e.target.value })}
                               className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
                           </div>
-                          <div>
-                            <label className="block text-xs text-gray-500 mb-1">語尾</label>
-                            <input type="text" placeholder="例: 〜やねん, 〜ですわ, 〜じゃ" value={voiceProfile.customEndings || ""}
-                              onChange={(e) => setVoiceProfile({ ...voiceProfile, customEndings: e.target.value })}
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                          <div className="col-span-2">
+                            <label className="block text-xs text-gray-500 mb-1">語尾（Enterで追加）</label>
+                            <TagInput
+                              value={voiceProfile.customEndings || ""}
+                              onChange={(v) => setVoiceProfile({ ...voiceProfile, customEndings: v })}
+                              placeholder="例: 〜やろ？ →Enter→ 〜🐻‍❄️"
+                            />
                           </div>
-                          <div>
-                            <label className="block text-xs text-gray-500 mb-1">口癖</label>
-                            <input type="text" placeholder="例: まぁ, ぶっちゃけ, なんというか" value={voiceProfile.customPhrases || ""}
-                              onChange={(e) => setVoiceProfile({ ...voiceProfile, customPhrases: e.target.value })}
-                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                          <div className="col-span-2">
+                            <label className="block text-xs text-gray-500 mb-1">口癖（Enterで追加）</label>
+                            <TagInput
+                              value={voiceProfile.customPhrases || ""}
+                              onChange={(v) => setVoiceProfile({ ...voiceProfile, customPhrases: v })}
+                              placeholder="例: まぁ →Enter→ ぶっちゃけ"
+                            />
                           </div>
                         </div>
                       </div>

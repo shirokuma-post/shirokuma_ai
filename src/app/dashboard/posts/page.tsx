@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { VoiceProfile } from "@/lib/ai/generate-post";
+import TagInput from "@/components/TagInput";
 
 type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; created_at: string };
 type PostLength = "short" | "standard" | "long";
@@ -690,19 +691,23 @@ export default function PostsPage() {
                         onBlur={() => saveVoiceProfile(voiceProfile)}
                         className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
                     </div>
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">語尾</label>
-                      <input type="text" placeholder="例: 〜やねん, 〜ですわ, 〜じゃ" value={voiceProfile.customEndings || ""}
-                        onChange={(e) => { const nv = { ...voiceProfile, customEndings: e.target.value }; setVoiceProfile(nv); }}
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-400 mb-1">語尾（Enterで追加）</label>
+                      <TagInput
+                        value={voiceProfile.customEndings || ""}
+                        onChange={(v) => { const nv = { ...voiceProfile, customEndings: v }; setVoiceProfile(nv); }}
                         onBlur={() => saveVoiceProfile(voiceProfile)}
-                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                        placeholder="例: 〜やろ？ →Enter→ 〜🐻‍❄️"
+                      />
                     </div>
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">口癖</label>
-                      <input type="text" placeholder="例: まぁ, ぶっちゃけ, なんというか" value={voiceProfile.customPhrases || ""}
-                        onChange={(e) => { const nv = { ...voiceProfile, customPhrases: e.target.value }; setVoiceProfile(nv); }}
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-400 mb-1">口癖（Enterで追加）</label>
+                      <TagInput
+                        value={voiceProfile.customPhrases || ""}
+                        onChange={(v) => { const nv = { ...voiceProfile, customPhrases: v }; setVoiceProfile(nv); }}
                         onBlur={() => saveVoiceProfile(voiceProfile)}
-                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                        placeholder="例: まぁ →Enter→ ぶっちゃけ"
+                      />
                     </div>
                   </div>
                 </div>

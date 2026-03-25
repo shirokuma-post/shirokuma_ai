@@ -1,0 +1,95 @@
+From 85bc713f18aabc8dcee3bda7ba29bf84808afba5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E3=81=97=E3=82=8D=E3=81=8F=E3=81=BE?= <aburi1000@gmail.com>
+Date: Thu, 26 Mar 2026 07:19:20 +0900
+Subject: [PATCH] =?UTF-8?q?fix:=20voiceProfile=E7=9B=B4=E9=80=81=E3=82=8A?=
+ =?UTF-8?q?=20+=20=E9=81=8E=E5=8E=BB=E6=8A=95=E7=A8=BF=E3=81=AE=E6=96=B9?=
+ =?UTF-8?q?=E8=A8=80=E3=83=AA=E3=83=BC=E3=82=AF=E9=98=B2=E6=AD=A2?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- generate APIでリクエストボディのvoiceProfileをDB値より優先使用
+- 過去投稿コンテキストに「方言・口調を真似するな」指示を追加
+- デバッグログ追加（voiceProfile source確認用）
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ src/app/api/generate/route.ts    | 10 ++++++++--
+ src/app/dashboard/posts/page.tsx |  2 +-
+ src/lib/ai/generate-post.ts      |  4 +++-
+ 3 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/app/api/generate/route.ts b/src/app/api/generate/route.ts
+index 67a45a3..36eadfd 100644
+--- a/src/app/api/generate/route.ts
++++ b/src/app/api/generate/route.ts
+@@ -23,11 +23,13 @@ export async function POST(request: Request) {
+       postLength = "standard",
+       splitMode = false,
+       snsTarget = "x",
++      voiceProfile: requestVoiceProfile,
+     } = body as {
+       style?: PostStyle;
+       postLength?: PostLength;
+       splitMode?: boolean;
+       snsTarget?: SnsTarget;
++      voiceProfile?: VoiceProfile;
+     };
+ 
+     // 3. ユーザーのマイコンセプトを取得
+@@ -95,7 +97,9 @@ export async function POST(request: Request) {
+ 
+     // 7.5. ボイスプロフィールとカスタムスタイルを取得
+     let customStylePrompt: string | undefined;
+-    let voiceProfile: VoiceProfile | undefined;
++    // リクエストから送られたvoiceProfileを最優先で使用（UIの最新状態）
++    // DBはフォールバックのみ
++    let voiceProfile: VoiceProfile | undefined = requestVoiceProfile;
+     const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", authUser.id).single();
+     if (profile?.style_defaults) {
+       const sd = profile.style_defaults as any;
+@@ -103,10 +107,12 @@ export async function POST(request: Request) {
+         const cs = sd.customStyles.find((s: any) => s.id === style);
+         if (cs) customStylePrompt = cs.prompt;
+       }
+-      if (sd.voiceProfile) {
++      // リクエストにvoiceProfileがなければDBから取得（バッチ生成時など）
++      if (!voiceProfile && sd.voiceProfile) {
+         voiceProfile = sd.voiceProfile as VoiceProfile;
+       }
+     }
++    console.log("[generate] voiceProfile source:", requestVoiceProfile ? "request" : "db", "dialect:", voiceProfile?.dialect, "customEndings:", voiceProfile?.customEndings);
+ 
+     // 8. プロンプト生成
+     // ai_optimized のときは learningContext をプロンプトビルダーに直接渡す（主軸として使う）
+diff --git a/src/app/dashboard/posts/page.tsx b/src/app/dashboard/posts/page.tsx
+index f1ceccf..6accd4e 100644
+--- a/src/app/dashboard/posts/page.tsx
++++ b/src/app/dashboard/posts/page.tsx
+@@ -265,7 +265,7 @@ export default function PostsPage() {
+     try {
+       const res = await fetch("/api/generate", {
+         method: "POST", headers: { "Content-Type": "application/json" },
+-        body: JSON.stringify({ style, postLength: splitMode ? "standard" : postLength, splitMode, snsTarget: snsTab }),
++        body: JSON.stringify({ style, postLength: splitMode ? "standard" : postLength, splitMode, snsTarget: snsTab, voiceProfile }),
+       });
+       const data = await res.json();
+       if (res.ok) {
+diff --git a/src/lib/ai/generate-post.ts b/src/lib/ai/generate-post.ts
+index b99634d..b4a5ec9 100644
+--- a/src/lib/ai/generate-post.ts
++++ b/src/lib/ai/generate-post.ts
+@@ -356,7 +356,9 @@ ${recent.map((p, i) => `${i + 1}. ${p.slice(0, 80)}${p.length > 80 ? "…" : ""}
+ 上記の投稿と以下の点で差をつけること:
+ - 書き出しの言葉を変える（同じ一文字目から始めない）
+ - 文の構造を変える（主語→述語の順序、体言止め、疑問形など）
+-- トーンを変える（前回が攻撃的なら今回は静かに、等）`;
++- トーンを変える（前回が攻撃的なら今回は静かに、等）
++
++【超重要】上記の過去投稿の「方言」「口調」「語尾」は絶対に真似するな。過去投稿が関西弁でも博多弁でも、今回の投稿はボイス設定で指定された方言・語尾のみを使え。過去投稿のスタイルに引きずられるな。`;
+ }
+ 
+ // =====================================================
+-- 
+2.34.1
+
