@@ -60,17 +60,33 @@ const RANDOM_STYLES: PostStyle[] = [
 ];
 
 const TIME_TONES: Record<string, string> = {
-  morning: "朝: エネルギッシュだが重くない。目覚めの軽い一撃。コーヒー飲みながら読む感じ。",
-  noon: "昼: 鋭い。仕事の合間に「はっ」とする気づき。テンポ良く。",
-  night: "夜: 内省的。少ししんみり。「自分は本当にこれでいいのか」と考えさせる。",
+  morning: "朝の空気感で。軽く。",
+  noon: "昼。テンポよく。",
+  night: "夜。少し内省的に。",
 };
 
 export type PostLength = "short" | "standard" | "long";
 
 export const LENGTH_CONFIGS: Record<PostLength, { label: string; description: string; prompt: string; maxTokens: number }> = {
-  short: { label: "短い", description: "60文字前後", prompt: "50〜70文字以内で書く。一文で刺す。パンチラインのみ。", maxTokens: 100 },
-  standard: { label: "標準", description: "120〜140文字", prompt: "120〜140文字で書く。X投稿に最適化。", maxTokens: 300 },
-  long: { label: "長い", description: "400〜500文字", prompt: "400〜500文字で書く。段落を分けて読みやすく。冒頭で引き込み、中盤で深掘り、最後にオチ。", maxTokens: 800 },
+  short: { label: "短い", description: "60文字前後", prompt: "50〜70文字以内で書く。一文で刺す。パンチラインのみ。", maxTokens: 200 },
+  standard: { label: "標準", description: "120〜140文字", prompt: "120〜140文字で書く。X投稿に最適化。", maxTokens: 500 },
+  long: { label: "長い", description: "400〜500文字", prompt: "400〜500文字で書く。段落を分けて読みやすく。冒頭で引き込み、中盤で深掘り、最後にオチ。必ず最後まで書き切ること。", maxTokens: 1500 },
+};
+
+// 視座（キャラクターの立ち位置）
+export type Perspective = "上" | "横" | "下";
+
+// 視座別ベースプロンプト — キャラの立ち位置に応じてAIの「人格」が変わる
+const PERSPECTIVE_BASE: Record<Perspective, string> = {
+  上: `あなたは、いろいろ経験してきた人間です。SNSに自分の考えを書いています。
+説教はしない。でも「あのとき気づいたこと」を、ふと振り返るように書く。
+正解を教えるんじゃなく、「自分はこう思った」を静かに置く感じ。`,
+  横: `あなたは、日々の暮らしの中で「ふと気づいたこと」をSNSに書いている普通の人です。
+理論を語るのではなく、生活の中で感じたことを自分の言葉で書いてください。
+完璧な文章は要りません。「あー、わかる」と思ってもらえることが一番大事。`,
+  下: `あなたは、まだいろんなことを知らない側の人間です。SNSに「今日気づいたこと」を書いています。
+知ったかぶりはしない。「え、これってそういうことだったの？」という素直な驚きが武器。
+教える立場じゃなく、一緒に「へぇ〜」ってなる感じで書く。`,
 };
 
 // キャラ設定
@@ -130,52 +146,42 @@ export const CHARACTERS: Record<CharacterType, { label: string; description: str
   },
 };
 
+// キャラクター → 視座マッピング
+const CHARACTER_PERSPECTIVE: Record<CharacterType, Perspective> = {
+  none: "横",         // デフォルトは横（同じ目線）
+  gal: "横",          // カジュアルに同意を求める → 横
+  philosopher: "上",  // 静かに深く問う → 上
+  housewife: "横",    // 生活者目線 → 横
+  salaryman: "横",    // あるある系の気づき → 横
+  senpai: "上",       // 経験を共有する → 上
+  otaku: "横",        // 早口で情報量多め → 横
+  gyaru_mama: "横",   // 子育て経験 → 横
+  kouhai: "下",       // 素直に驚く発見型 → 下
+  grandma: "上",      // 人生の知恵を穏やかに → 上
+  child: "下",        // 無邪気な疑問 → 下
+};
+
+function getBasePerspectivePrompt(character: CharacterType): string {
+  const perspective = CHARACTER_PERSPECTIVE[character];
+  return PERSPECTIVE_BASE[perspective];
+}
+
 // =====================================================
 // AI臭い表現のブロックリスト（拡張版）
 // =====================================================
+// AIが使いがちな致命ワードだけに絞る（多すぎると逆効果）
 const BANNED_WORDS = [
-  // 学術・ビジネス用語
-  "定数", "変数", "演繹法", "帰納法", "抽象", "構造化", "フレームワーク", "パラダイム", "メタ認知",
-  "コンテクスト", "アプローチ", "ソリューション", "シナジー", "イノベーション", "エコシステム",
-  "リテラシー", "サステナブル", "レバレッジ", "コミット", "オプティマイズ",
-  // AI臭い接続表現
-  "つまるところ", "換言すれば", "とどのつまり", "畢竟",
-  // AI臭い締め表現
-  "ではないでしょうか", "と言えるでしょう", "なのかもしれません",
-  // 過剰な装飾
-  "非常に重要", "極めて", "本質的に",
+  "フレームワーク", "パラダイム", "メタ認知", "アプローチ", "ソリューション",
+  "シナジー", "イノベーション", "サステナブル",
+  "つまるところ", "換言すれば", "畢竟",
 ];
 
 // =====================================================
-// AI臭さ防止ルール
+// AI臭さ防止（シンプル版）
 // =====================================================
-const ANTI_AI_RULES = `■ 絶対に避けること（AI臭い投稿の特徴）:
-- 「〜ではないでしょうか」「〜と言えるでしょう」で締めない
-- 毎回「結論→理由→まとめ」の同じ構造にしない
-- 「実は〜」「本当は〜」の書き出しを多用しない
-- 「〜しましょう」「〜ですよね」「〜してみてください」禁止
-- 一文目から主張・結論を叩きつけるパターンばかりにしない
-- カタカナビジネス用語禁止
-- きれいにまとまりすぎない。人間は完璧な文章を書かない
-- 全ての投稿に「オチ」や「締め」をつけようとしない`;
+const ANTI_AI_RULES = `■ 禁止:
+「〜ではないでしょうか」「〜しましょう」「〜してみてください」禁止。カタカナビジネス用語禁止。ハッシュタグ禁止。きれいにまとまりすぎるな。`;
 
-// =====================================================
-// 構造バリエーション（毎回ランダムに1つ選ばれる）
-// =====================================================
-const STRUCTURAL_VARIATIONS = [
-  "体言止めで終わる。最後の文を名詞で止める。",
-  "口語体で書く。書き言葉ではなく、話しかけるように。",
-  "独り言調。誰かに向けて書いてない。ただ思ったことを吐き出す。",
-  "途中で文が切れる感じ。「…」や「、」で終わってもいい。完結しなくていい。",
-  "体験→感情→一言。三段構成だが短く。",
-  "問いだけ投げて終わる。回答なし。",
-  "事実だけ述べる。感情を入れない。冷たく。",
-  "比喩から始める。直接的に言わない。",
-  "短文の連打。一文3〜10字を5つ並べるだけ。",
-  "最後だけ敬語。それまではタメ口。ギャップを出す。",
-  "逆順。結論を最後に持ってくる。途中は伏線。",
-  "あえて弱気。「〜かもしれない」「〜な気がする」で終わる。断言しない。",
-];
 
 // SNSプラットフォーム別の特性
 export type SnsTarget = "x" | "threads";
@@ -245,11 +251,6 @@ function getPhilosophyContext(philosophy: Philosophy): string {
 }
 
 // =====================================================
-// ランダム構造バリエーション取得
-// =====================================================
-function getRandomVariation(): string {
-  return STRUCTURAL_VARIATIONS[Math.floor(Math.random() * STRUCTURAL_VARIATIONS.length)];
-}
 
 // =====================================================
 // 反復防止コンテキスト構築
@@ -293,107 +294,66 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const actualStyle = style === "mix"
     ? RANDOM_STYLES[Math.floor(Math.random() * RANDOM_STYLES.length)]
     : style;
-  const allBanned = [...BANNED_WORDS, ...(customBannedWords || [])];
+
   const lengthConfig = LENGTH_CONFIGS[postLength];
   const charConfig = CHARACTERS[character];
   const philosophyContext = getPhilosophyContext(philosophy);
-  const variation = getRandomVariation();
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
 
-  const system = `あなたは、独自の理論体系を持つ人間のSNSアカウントの中の人です。
-代筆ではなく、本人として投稿を書いてください。人間が書いたとしか思えない自然さが最重要です。
+  const basePrompt = getBasePerspectivePrompt(character);
 
+  const system = `${basePrompt}
+${charConfig.prompt ? `\n${charConfig.prompt}\n` : ""}
+■ 想い（直接語らず、にじみ出るように）:
 ${philosophyContext}
 
-■ 投稿スタイル:
-${STYLE_PROMPTS[actualStyle]}
+■ スタイル: ${STYLE_PROMPTS[actualStyle]}
 
-■ 時間帯トーン:
-${TIME_TONES[timeOfDay]}
+■ トーン: ${TIME_TONES[timeOfDay]}
+${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-${snsTarget ? SNS_CONTEXT[snsTarget] : ""}
-
-■ 文字数:
-${lengthConfig.prompt}
-
-${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
-
-■ 今回の構造指定（毎回変わる）:
-${variation}
+■ 文字数: ${lengthConfig.prompt} 必ず最後まで書き切ること。
 
 ${ANTI_AI_RULES}
 ${antiRepetition}
+${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
 
-■ ルール:
-- 中学生でもわかる言葉で書く
-- 以下の言葉は絶対に使わない: ${allBanned.join("、")}
-- ハッシュタグは使わない
-- 武器（フレームワーク）があれば、それを使った切り口で攻めろ
-- 人間のSNS投稿を意識する。完璧じゃなくていい。ちょっと雑でもいい。
-
-${customPrompt ? `■ カスタム指示:\n${customPrompt}` : ""}`;
-
-  const user = "上記の理論体系に基づいて、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
+  const user = "上記をふまえて、SNS投稿を1つ書いてください。投稿テキストのみを出力。説明や前置きは不要。必ず最後まで書き切ること。";
   return { system, user };
 }
 
 function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; user: string } {
   const { philosophy, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, learningContext, recentPosts } = options;
-  const allBanned = [...BANNED_WORDS, ...(customBannedWords || [])];
+
   const lengthConfig = LENGTH_CONFIGS[postLength];
   const charConfig = CHARACTERS[character];
   const philosophyContext = getPhilosophyContext(philosophy);
-  const variation = getRandomVariation();
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
 
-  const styleOptions = `利用可能なスタイル:
-1. 常識破壊: みんなが信じている「当たり前」をぶっ壊す
-2. 毒舌問いかけ: 読んだ人が「うっ…」と胸に刺さる問い
-3. ひっくり返し: 視点を180度変える
-4. 毒入りストーリー: 短い物語に毒を仕込む
-5. ぼやき: ふと思ったことを呟く。結論なし
-6. 有益: 具体的なTips・ノウハウ。友達に教える感じ
-7. 実体験風: 「昨日〜した」で始まるリアルなエピソード
-8. 逆張り質問: 当然のことに「それ本当？」と疑問を投げる`;
+  const styleOptions = `利用可能なスタイル: 常識破壊 / 問いかけ / ひっくり返し / ストーリー / ぼやき / 有益 / 実体験風 / 共感`;
 
   const hasLearning = learningContext && learningContext.trim().length > 0;
 
-  const system = `あなたは、独自の理論体系を持つ人間のSNSアカウントの中の人です。
-代筆ではなく、本人として投稿を書いてください。人間が書いたとしか思えない自然さが最重要です。
+  const basePrompt = getBasePerspectivePrompt(character);
 
+  const system = `${basePrompt}
+${charConfig.prompt ? `\n${charConfig.prompt}\n` : ""}
+■ 想い（直接語らず、にじみ出るように）:
 ${philosophyContext}
 
-${hasLearning ? `■ 【最重要】学習データ（過去に伸びた投稿の分析）:
+${hasLearning ? `■ 学習データ（最優先で参考に）:
 ${learningContext}
-
-上記の学習データを最優先で参考にしてください。伸びた投稿のパターン（構造、フック、トーン、テクニック）を分析し、最もエンゲージメントが高くなるスタイルと構造を自動で選択してください。` : `■ AI最適化モード:
-学習データがまだありません。以下のスタイルから、この想い・時間帯・プラットフォームに最も効果的なものを自動選択してください。`}
+伸びた投稿の勝因を再現すること。表現のコピーではなく本質を活かす。` : `■ AI最適化: 以下から最適なスタイルを自動選択。`}
 
 ${styleOptions}
 
-■ 時間帯トーン:
-${TIME_TONES[timeOfDay]}
+■ トーン: ${TIME_TONES[timeOfDay]}
+${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-${snsTarget ? SNS_CONTEXT[snsTarget] : ""}
-
-■ 文字数:
-${lengthConfig.prompt}
-
-${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
-
-■ 今回の構造指定（毎回変わる）:
-${variation}
+■ 文字数: ${lengthConfig.prompt} 必ず最後まで書き切ること。
 
 ${ANTI_AI_RULES}
-${antiRepetition}
-
-■ ルール:
-- 中学生でもわかる言葉で書く
-- 以下の言葉は絶対に使わない: ${allBanned.join("、")}
-- ハッシュタグは使わない
-- 武器（フレームワーク）があれば、それを使った切り口で攻めろ
-- 学習パターンの「本質」を活かすこと。表現のコピーではなく、勝因の再現を狙う
-- 人間のSNS投稿を意識する。完璧じゃなくていい。ちょっと雑でもいい。`;
+${antiRepetition}`;
 
   const user = hasLearning
     ? "学習データの勝ちパターンを最大限活用して、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。"
@@ -409,7 +369,7 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
   const actualStyle = style === "mix"
     ? RANDOM_STYLES[Math.floor(Math.random() * RANDOM_STYLES.length)]
     : style;
-  const allBanned = [...BANNED_WORDS, ...(customBannedWords || [])];
+
   const charConfig = CHARACTERS[character];
   const philosophyContext = getPhilosophyContext(philosophy);
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
@@ -425,55 +385,29 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
   ];
   const hookStyle = hookVariations[Math.floor(Math.random() * hookVariations.length)];
 
-  const system = `あなたは、独自の理論体系を持つ人間のSNSアカウントの中の人です。
-代筆ではなく、本人として投稿を書いてください。
+  const basePrompt = getBasePerspectivePrompt(character);
 
+  const system = `${basePrompt}
+${charConfig.prompt ? `\n${charConfig.prompt}\n` : ""}
+■ 想い（直接語らず、にじみ出るように）:
 ${philosophyContext}
 
-■ 投稿スタイル:
-${STYLE_PROMPTS[actualStyle]}
+■ スタイル: ${STYLE_PROMPTS[actualStyle]}
 
-■ 時間帯トーン:
-${TIME_TONES[timeOfDay]}
+■ トーン: ${TIME_TONES[timeOfDay]}
+${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-${snsTarget ? SNS_CONTEXT[snsTarget] : ""}
+■ 分割投稿フォーマット:
+【hook】${hookStyle} 50〜70文字。続きを読みたくなる一文。
+【reply】300〜500文字。hookの期待に応える。最後にオチか問いかけ。
 
-${charConfig.prompt ? `■ キャラ設定:\n${charConfig.prompt}` : ""}
-
-■ フォーマット: 分割投稿（フック → リプライ長文）
-
-【hookの書き方】
-${hookStyle}
-- 50〜70文字以内
-- 「続きを読みたい」と思わせることが最重要
-- hookだけで完結しないこと。情報を出し惜しみする
-- 「強烈な一文」ではなく「気になるところで止める」
-
-【replyの書き方】
-- 300〜500文字
-- hookの期待に応える深い内容
-- 段落を分けて読みやすく
-- 最後にオチか問いかけ
-
-以下のJSON形式で出力してください。他の文字は一切不要です。
-
-{
-  "hook": "（好奇心を煽って途中で止めたフック）",
-  "reply": "（hookの続き。深掘り本文）"
-}
+JSON形式のみ出力: {"hook": "...", "reply": "..."}
 
 ${ANTI_AI_RULES}
 ${antiRepetition}
+${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
 
-■ ルール:
-- 中学生でもわかる言葉で書く
-- 以下の言葉は絶対に使わない: ${allBanned.join("、")}
-- ハッシュタグは使わない
-- 武器（フレームワーク）があれば、それを使った切り口で攻めろ
-
-${customPrompt ? `■ カスタム指示:\n${customPrompt}` : ""}`;
-
-  const user = "上記の理論体系に基づいて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。";
+  const user = "上記をふまえて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。";
   return { system, user };
 }
 
