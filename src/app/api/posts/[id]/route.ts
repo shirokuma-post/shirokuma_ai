@@ -9,8 +9,8 @@ import {
   generateWithGoogle,
   LENGTH_CONFIGS,
   type PostLength,
-  type CharacterType,
   type SnsTarget,
+  type VoiceProfile,
 } from "@/lib/ai/generate-post";
 import type { PostStyle } from "@/types/database";
 import { buildLearningContext } from "@/lib/ai/learning-context";
@@ -103,7 +103,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const hour = parseInt(slotConfig.time?.split(":")[0] || "12");
     const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
     const style = (slotConfig.style || "mix") as PostStyle;
-    const character = (slotConfig.character || "none") as CharacterType;
     const postLength = (slotConfig.length || "standard") as PostLength;
     const isSplit = slotConfig.target === "x" ? false : (slotConfig.split || false);
     const snsTarget = (slotConfig.target || "x") as SnsTarget;
@@ -122,9 +121,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (rp?.length) recentPostContents = rp.map((p: any) => p.content);
     } catch {}
 
+    // ボイスプロフィール・カスタムスタイルを取得
+    let voiceProfile: VoiceProfile | undefined;
+    let customStylePrompt: string | undefined;
+    try {
+      const { data: profileData } = await supabase.from("profiles").select("style_defaults").eq("id", user.id).single();
+      if (profileData?.style_defaults) {
+        const sd = profileData.style_defaults as any;
+        if (sd.voiceProfile) voiceProfile = sd.voiceProfile as VoiceProfile;
+        if (sd.customStyles) {
+          const cs = sd.customStyles.find((s: any) => s.id === style);
+          if (cs) customStylePrompt = cs.prompt;
+        }
+      }
+    } catch {}
+
     const { system, user: userPrompt } = isSplit
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
 
     const systemFull = system + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "");
     const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);

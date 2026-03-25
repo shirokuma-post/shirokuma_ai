@@ -10,7 +10,6 @@ import {
   generateWithGoogle,
   LENGTH_CONFIGS,
   type PostLength,
-  type CharacterType,
   type SnsTarget,
   type VoiceProfile,
 } from "@/lib/ai/generate-post";
@@ -23,7 +22,7 @@ interface ScheduleSlot {
   time: string;
   target: SnsTarget;
   style: string;
-  character: string;
+  character?: string;  // 後方互換（未使用）
   length: string;
   split: boolean;
   useTrend?: boolean;
@@ -75,7 +74,6 @@ export async function GET(request: Request) {
       if (slots.length === 0) continue;
 
       const userId = config.user_id;
-      const globalTrendEnabled = config.trend_enabled ?? false;
       const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
       try {
@@ -88,7 +86,7 @@ export async function GET(request: Request) {
           .gte("scheduled_at", todayStr + "T00:00:00+09:00")
           .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-        const postIds = await generateDraftsForUser(supabase, userId, slots, globalTrendEnabled, trendCategories, todayStr);
+        const postIds = await generateDraftsForUser(supabase, userId, slots, trendCategories, todayStr);
         totalGenerated += postIds.length;
 
         // Schedule QStash delayed messages for each draft
@@ -154,7 +152,6 @@ async function generateDraftsForUser(
   supabase: any,
   userId: string,
   slots: ScheduleSlot[],
-  globalTrendEnabled: boolean,
   trendCategories: string[],
   todayStr: string,
 ): Promise<{ id: string; scheduledAt: string; userId: string }[]> {
@@ -228,13 +225,15 @@ async function generateDraftsForUser(
     }
   } catch {}
 
-  // 5.5. ボイスプロフィールを取得
+  // 5.5. ボイスプロフィール・カスタムスタイルを取得
   let voiceProfile: VoiceProfile | undefined;
+  let customStyleDefs: any[] = [];
   try {
     const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", userId).single();
     if (profile?.style_defaults) {
       const sd = profile.style_defaults as any;
       if (sd.voiceProfile) voiceProfile = sd.voiceProfile as VoiceProfile;
+      if (sd.customStyles) customStyleDefs = sd.customStyles;
     }
   } catch {}
 
@@ -253,15 +252,15 @@ async function generateDraftsForUser(
     const hour = parseInt(refSlot.time.split(":")[0]);
     const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
     const style = (refSlot.style || "mix") as PostStyle;
-    const character = (refSlot.character || "none") as CharacterType;
     const postLength = (refSlot.length || "standard") as PostLength;
     const isSplit = refSlot.target === "x" ? false : (refSlot.split || false);
     const snsTarget = refSlot.target;
+    const customStylePrompt = customStyleDefs.find((s: any) => s.id === style)?.prompt;
 
     try {
       const { system, user } = isSplit
-        ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents })
-        : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
+        ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
+        : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
 
       // スロットごとにトレンド適用を判定（明示的にONにしたスロットのみ）
       const slotUsesTrend = refSlot.useTrend === true;
@@ -314,10 +313,10 @@ function groupSlots(slots: ScheduleSlot[]): SlotGroup[] {
   const map = new Map<string, { originalIndex: number; slot: ScheduleSlot }[]>();
 
   slots.forEach((slot, i) => {
-    // Group by: target + style + character + length + split + timeOfDay
+    // Group by: target + style + length + split + useTrend + timeOfDay
     const hour = parseInt(slot.time.split(":")[0]);
     const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-    const key = `${slot.target}_${slot.style}_${slot.character}_${slot.length}_${slot.split}_${slot.useTrend || false}_${timeOfDay}`;
+    const key = `${slot.target}_${slot.style}_${slot.length}_${slot.split}_${slot.useTrend || false}_${timeOfDay}`;
 
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push({ originalIndex: i, slot });

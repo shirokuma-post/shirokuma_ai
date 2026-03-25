@@ -20,7 +20,7 @@ interface ScheduleSlot {
   time: string;
   target: SnsTarget;
   style: string;
-  character: string;
+  character?: string;  // 後方互換（未使用）
   length: string;
   split: boolean;
   useTrend?: boolean;
@@ -200,7 +200,7 @@ function groupSlots(slots: ScheduleSlot[]) {
   slots.forEach((slot, i) => {
     const hour = parseInt(slot.time.split(":")[0]);
     const tod = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-    const key = `${slot.target}_${slot.style}_${slot.character}_${slot.length}_${slot.split}_${slot.useTrend || false}_${tod}`;
+    const key = `${slot.target}_${slot.style}_${slot.length}_${slot.split}_${slot.useTrend || false}_${tod}`;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push({ originalIndex: i, slot });
   });

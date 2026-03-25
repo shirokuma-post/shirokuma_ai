@@ -10,7 +10,6 @@ import {
   generateWithGoogle,
   LENGTH_CONFIGS,
   type PostLength,
-  type CharacterType,
   type SnsTarget,
   type VoiceProfile,
 } from "@/lib/ai/generate-post";
@@ -23,7 +22,7 @@ interface ScheduleSlot {
   time: string;
   target: SnsTarget;
   style: string;
-  character: string;
+  character?: string;  // 後方互換（未使用）
   length: string;
   split: boolean;
 }
@@ -171,7 +170,6 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
 
   // 4. Slot settings
   const style = (slot.style || "mix") as PostStyle;
-  const character = (slot.character || "none") as CharacterType;
   const postLength = (slot.length || "standard") as PostLength;
   const provider = aiKey.provider;
   const decryptedAiKey = decrypt(aiKey.encrypted_value);
@@ -227,13 +225,18 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
     // Non-fatal
   }
 
-  // 6.5. ボイスプロフィールを取得
+  // 6.5. ボイスプロフィール・カスタムスタイルを取得
   let voiceProfile: VoiceProfile | undefined;
+  let customStylePrompt: string | undefined;
   try {
     const { data: profileData } = await supabase.from("profiles").select("style_defaults").eq("id", userId).single();
     if (profileData?.style_defaults) {
       const sd = profileData.style_defaults as any;
       if (sd.voiceProfile) voiceProfile = sd.voiceProfile as VoiceProfile;
+      if (sd.customStyles) {
+        const cs = sd.customStyles.find((s: any) => s.id === style);
+        if (cs) customStylePrompt = cs.prompt;
+      }
     }
   } catch {}
 
@@ -242,8 +245,8 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
   const isSplit = snsTarget === "x" ? false : (slot.split || false);
 
   const { system, user } = isSplit
-    ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents })
-    : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
+    ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
+    : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
 
   const systemWithLearning = system
     + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
