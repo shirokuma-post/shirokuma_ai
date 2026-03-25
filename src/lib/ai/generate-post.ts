@@ -380,6 +380,14 @@ interface GenerateOptions {
   customCharacterPrompt?: string;   // カスタムキャラのプロンプト（後方互換、無視される）
 }
 
+// 方言リマインダー（プロンプト末尾に配置して確実に守らせる）
+function buildDialectReminder(vp: VoiceProfile): string {
+  if (!vp.dialect || vp.dialect === "標準語") {
+    return `\n■ 【絶対厳守】標準語で書け。関西弁・博多弁・その他方言は一切禁止。「〜やん」「〜へん」「〜とる」「〜やねん」「〜やろ」「〜ねん」「〜やで」「〜んや」は全て禁止。文中も語尾も標準語のみ。`;
+  }
+  return `\n■ 【絶対厳守】${vp.dialect}で書け。他の方言は混ぜるな。`;
+}
+
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
   const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customBannedWords, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
 
@@ -398,6 +406,7 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const dialectReminder = buildDialectReminder(vp);
 
   const system = `${basePrompt}
 
@@ -415,9 +424,11 @@ ${ANTI_AI_RULES}
 ${antiRepetition}
 ${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}
 
-■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。`;
+■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。
+${dialectReminder}`;
 
-  const user = `${lengthConfig.prompt} SNS投稿を1つ書いてください。投稿テキストのみ出力。`;
+  const dialectUserHint = (!vp.dialect || vp.dialect === "標準語") ? "必ず標準語で。方言禁止。" : `${vp.dialect}で。`;
+  const user = `${lengthConfig.prompt} ${dialectUserHint} SNS投稿を1つ書いてください。投稿テキストのみ出力。`;
   return { system, user };
 }
 
@@ -453,11 +464,13 @@ ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 ${ANTI_AI_RULES}
 ${antiRepetition}
 
-■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。`;
+■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。
+${buildDialectReminder(vp)}`;
 
+  const dialectUserHint = (!vp.dialect || vp.dialect === "標準語") ? "必ず標準語で。方言禁止。" : `${vp.dialect}で。`;
   const user = hasLearning
-    ? `${lengthConfig.prompt} 学習データの勝ちパターンを活用してSNS投稿を1つ。投稿テキストのみ出力。`
-    : `${lengthConfig.prompt} SNS投稿を1つ。投稿テキストのみ出力。`;
+    ? `${lengthConfig.prompt} ${dialectUserHint} 学習データの勝ちパターンを活用してSNS投稿を1つ。投稿テキストのみ出力。`
+    : `${lengthConfig.prompt} ${dialectUserHint} SNS投稿を1つ。投稿テキストのみ出力。`;
   return { system, user };
 }
 
@@ -507,9 +520,11 @@ JSON形式のみ出力: {"hook": "...", "reply": "..."}
 
 ${ANTI_AI_RULES}
 ${antiRepetition}
-${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
+${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}
+${buildDialectReminder(vp)}`;
 
-  const user = "上記をふまえて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。";
+  const dialectUserHint = (!vp.dialect || vp.dialect === "標準語") ? "必ず標準語で。方言禁止。" : `${vp.dialect}で。`;
+  const user = `${dialectUserHint} 上記をふまえて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。`;
   return { system, user };
 }
 
