@@ -15,6 +15,7 @@ interface Slot {
   character: string;
   length: string;
   split: boolean;
+  useTrend?: boolean;
 }
 
 const PLAN_MAX_SLOTS: Record<UserPlan, number> = { free: 3, pro: 10, business: -1 };
@@ -33,19 +34,6 @@ const STYLES = [
   { id: "ai_optimized", label: "AI最適化" },
 ];
 
-const CHARACTERS = [
-  { id: "none", label: "なし" },
-  { id: "gal", label: "ギャル" },
-  { id: "philosopher", label: "哲学者" },
-  { id: "housewife", label: "主婦" },
-  { id: "salaryman", label: "サラリーマン" },
-  { id: "senpai", label: "先輩" },
-  { id: "otaku", label: "オタク" },
-  { id: "gyaru_mama", label: "ギャルママ" },
-  { id: "kouhai", label: "後輩" },
-  { id: "grandma", label: "おばあちゃん" },
-  { id: "child", label: "子ども" },
-];
 
 const LENGTHS = [
   { id: "short", label: "短い" },
@@ -60,7 +48,6 @@ const TARGETS = [
 
 // Free: 5種、Pro+: 全10種
 const FREE_STYLES = ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"];
-const FREE_CHARACTERS = ["none", "salaryman", "gal", "child"];
 
 const TREND_CATEGORY_OPTIONS = [
   { id: "general", label: "総合" },
@@ -74,7 +61,7 @@ const TREND_CATEGORY_OPTIONS = [
 
 const DEFAULT_TREND_CATEGORIES = ["general", "technology", "business"];
 
-const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false };
+const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", character: "none", length: "standard", split: false, useTrend: false };
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
@@ -91,6 +78,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
   const [userSnsProvider, setUserSnsProvider] = useState<"x" | "threads" | null>(null);
+  const [customStyles, setCustomStyles] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => { fetchSchedule(); fetchPlan(); fetchStyleDefaults(); }, []);
 
@@ -103,9 +91,10 @@ export default function SchedulePage() {
           const newDefault: Slot = {
             ...INITIAL_DEFAULT_SLOT,
             style: data.defaults.style || "mix",
-            character: data.defaults.character || "none",
+            character: "none",
           };
           setDefaultSlot(newDefault);
+          if (data.defaults.customStyles) setCustomStyles(data.defaults.customStyles.map((s: any) => ({ id: s.id, name: s.name })));
         }
       }
     } catch {}
@@ -195,7 +184,6 @@ export default function SchedulePage() {
 
   const maxSlots = PLAN_MAX_SLOTS[userPlan];
   const canAddMore = maxSlots === -1 || slots.length < maxSlots;
-  const canUseAllCharacters = planLevel(userPlan) >= 1;
   const canUseSplit = planLevel(userPlan) >= 2;
   const isMultiSns = planLevel(userPlan) >= 2; // Business: 両方使える
   const allowedStyles = planLevel(userPlan) >= 1 ? STYLES : STYLES.filter(s => FREE_STYLES.includes(s.id));
@@ -259,7 +247,6 @@ export default function SchedulePage() {
               const isExpanded = expandedSlot === i;
               const targetLabel = TARGETS.find(t => t.id === slot.target)?.label || "X";
               const styleLabel = STYLES.find(s => s.id === slot.style)?.label || "ミックス";
-              const charLabel = CHARACTERS.find(c => c.id === slot.character)?.label || "なし";
 
               return (
                 <div key={i} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -272,7 +259,6 @@ export default function SchedulePage() {
                       <span className="text-sm font-mono font-semibold text-gray-900">{slot.time}</span>
                       <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (slot.target === "x" ? "bg-gray-100 text-gray-700" : slot.target === "threads" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700")}>{targetLabel}</span>
                       <span className="text-xs text-gray-500">{styleLabel}</span>
-                      {slot.character !== "none" && <span className="text-xs text-gray-400">/ {charLabel}</span>}
                       {slot.split && <span className="text-xs text-purple-500">分割</span>}
                     </div>
                     <div className="flex items-center gap-2">
@@ -331,18 +317,21 @@ export default function SchedulePage() {
                               >{s.label}{locked && " 🔒"}</button>
                             );
                           })}
+                          {customStyles.map((cs) => (
+                            <button key={cs.id} onClick={() => updateSlot(i, { style: cs.id })}
+                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.style === cs.id ? "border-purple-500 bg-purple-50 text-purple-700" : "border-purple-200 text-purple-600 hover:border-purple-300")}>{cs.name}</button>
+                          ))}
                         </div>
                       </div>
 
-                      {/* Character */}
+                      {/* Voice Profile Summary */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">キャラ設定</label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {(canUseAllCharacters ? CHARACTERS : CHARACTERS.filter(c => FREE_CHARACTERS.includes(c.id))).map((c) => (
-                            <button key={c.id} onClick={() => updateSlot(i, { character: c.id })}
-                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.character === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{c.label}</button>
-                          ))}
-                          {!canUseAllCharacters && <a href="/pricing" className="px-3 py-1.5 text-xs text-amber-600 hover:text-amber-700">+7種 Proで解放 →</a>}
+                        <label className="block text-xs font-medium text-gray-600 mb-1">ボイス設定</label>
+                        <div className="text-xs text-gray-600">
+                          <p className="mb-2">グローバル設定が適用されます：性別・家族・方言 {planLevel(userPlan) >= 1 && "+ 年齢・距離感・毒気・品格・テンション・絵文字"}</p>
+                          <a href="/dashboard/posts" className="inline-flex items-center gap-1 text-brand-600 hover:text-brand-700">
+                            → Posts画面で変更
+                          </a>
                         </div>
                       </div>
 
@@ -377,6 +366,19 @@ export default function SchedulePage() {
                                   !canUseSplit ? "border-gray-100 bg-white text-gray-400 hover:border-amber-300" :
                                     "border-gray-200 text-gray-600 hover:border-gray-300")}
                             >{slot.split ? "✓ " : ""}フック→リプ{!canUseSplit && " 🔒"}</button>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">トレンド{planLevel(userPlan) < 2 && <span className="ml-1 text-gray-400">🔒</span>}</label>
+                          {planLevel(userPlan) >= 2 ? (
+                            <button
+                              onClick={() => updateSlot(i, { useTrend: !slot.useTrend })}
+                              className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                                (slot.useTrend ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}
+                            >{slot.useTrend ? "✓ " : ""}トレンド反映</button>
+                          ) : (
+                            <button onClick={() => window.location.href = "/pricing"}
+                              className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-white text-gray-400 hover:border-amber-300">トレンド反映 🔒</button>
                           )}
                         </div>
                       </div>

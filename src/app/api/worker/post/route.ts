@@ -360,10 +360,12 @@ async function postDraft(supabase: any, postId: string, userId: string) {
   const snsTarget = draft.sns_target || "x";
   const imageUrl = draft.image_url || null;
 
-  // Parse split content
+  // Parse split content — slot_config.split が true の場合のみスレッド投稿
+  const draftSlotCfg = draft.slot_config as any;
+  const isSplitSlot = draftSlotCfg?.split === true;
   const parts = content.split("\n\n---\n\n");
-  const hookText = parts[0];
-  const replyText = parts.length > 1 ? parts[1] : null;
+  const hookText = isSplitSlot ? parts[0] : content.replace(/\n\n---\n\n/g, "\n\n");
+  const replyText = isSplitSlot && parts.length > 1 ? parts[1] : null;
 
   // Post to SNS (画像は本文投稿にのみ添付、リプライには付けない)
   const snsResults: Record<string, any> = {};

@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import type { VoiceProfile } from "@/lib/ai/generate-post";
 
 type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; created_at: string };
 type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
-type CharacterType = "none"|"gal"|"philosopher"|"housewife"|"salaryman"|"senpai"|"otaku"|"gyaru_mama"|"kouhai"|"grandma"|"child";
 type SnsTarget = "x" | "threads";
 
 const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "問いかけ", flip: "ひっくり返し", poison_story: "ストーリー", boyaki: "ぼやき", yueki: "有益", jitsuwa: "実体験風", kyoukan: "共感", mix: "ミックス", ai_optimized: "AI最適化" };
@@ -31,20 +31,6 @@ const LENGTH_OPTIONS_THREADS: { id: PostLength; label: string; desc: string; min
   { id: "standard", label: "標準", desc: "120〜140文字", minPlan: "free" },
   { id: "long", label: "長い", desc: "400〜500文字", minPlan: "pro" },
 ];
-const CHARACTER_OPTIONS: { id: CharacterType; label: string; desc: string }[] = [
-  { id: "none", label: "なし", desc: "デフォルト" },
-  { id: "gal", label: "ギャル", desc: "カジュアルに共感" },
-  { id: "philosopher", label: "哲学者", desc: "静かに深く" },
-  { id: "housewife", label: "主婦", desc: "生活者目線" },
-  { id: "salaryman", label: "サラリーマン", desc: "あるある系" },
-  { id: "senpai", label: "先輩", desc: "経験を共有" },
-  { id: "otaku", label: "オタク", desc: "早口で本質" },
-  { id: "gyaru_mama", label: "ギャルママ", desc: "軽いのに深い" },
-  { id: "kouhai", label: "後輩", desc: "素直に驚く" },
-  { id: "grandma", label: "おばあちゃん", desc: "穏やかな知恵" },
-  { id: "child", label: "子ども", desc: "無邪気に刺す" },
-];
-const FREE_CHARACTER_IDS = ["none", "salaryman", "gal", "child"];
 function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" ? 1 : 2; }
 
 export default function PostsPage() {
@@ -54,12 +40,23 @@ export default function PostsPage() {
   // --- Per-SNS settings ---
   const [xStyle, setXStyle] = useState("mix");
   const [xLength, setXLength] = useState<PostLength>("standard");
-  const [xCharacter, setXCharacter] = useState<CharacterType>("none");
   const [thStyle, setThStyle] = useState("mix");
   const [thLength, setThLength] = useState<PostLength>("standard");
-  const [thCharacter, setThCharacter] = useState<CharacterType>("none");
   const [thSplitMode, setThSplitMode] = useState(false);
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const [customStyles, setCustomStyles] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile>({
+    gender: "male",
+    family: "single",
+    dialect: "標準語",
+    age: "middle",
+    distance: "friend",
+    toxicity: "normal",
+    elegance: "normal",
+    tension: "normal",
+    emoji: "normal",
+  });
+  const [userPlan, setUserPlan] = useState<UserPlan>("free");
 
   // --- Shared state ---
   const [generating, setGenerating] = useState(false);
@@ -73,7 +70,6 @@ export default function PostsPage() {
   const [dailyCount, setDailyCount] = useState(0);
   const [dailyLimit, setDailyLimit] = useState(3);
   const [limitReached, setLimitReached] = useState(false);
-  const [userPlan, setUserPlan] = useState<UserPlan>("free");
   const [userSnsProvider, setUserSnsProvider] = useState<SnsTarget | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,8 +160,12 @@ export default function PostsPage() {
         const data = await res.json();
         if (data.defaults) {
           const s = data.defaults.style || "mix";
-          const c = (data.defaults.character || "none") as CharacterType;
-          setXStyle(s); setThStyle(s); setXCharacter(c); setThCharacter(c);
+          setXStyle(s);
+          setThStyle(s);
+          if (data.defaults.customStyles) setCustomStyles(data.defaults.customStyles);
+          if (data.defaults.voiceProfile) {
+            setVoiceProfile(data.defaults.voiceProfile);
+          }
         }
         setDefaultsLoaded(true);
       }
@@ -223,10 +223,13 @@ export default function PostsPage() {
   async function handleManualPost(draft: Post) {
     setPosting(draft.id);
     try {
-      const content = draft.content;
+      const content = draft.content || "";
+      const draftSlotConfig = draft.slot_config as any;
+      const draftIsSplit = draftSlotConfig?.split === true;
       const parts = content.split("\n\n---\n\n");
-      const hookText = parts[0];
-      const replyText = parts.length > 1 ? parts[1] : undefined;
+      // 分割スロットの場合のみスレッド投稿、そうでなければ --- を除去して単発投稿
+      const hookText = draftIsSplit ? parts[0] : content.replace(/\n\n---\n\n/g, "\n\n");
+      const replyText = draftIsSplit && parts.length > 1 ? parts[1] : undefined;
 
       const payload: any = { provider: draft.sns_target || "x", text: hookText };
       if (replyText) payload.splitReply = replyText;
@@ -258,12 +261,11 @@ export default function PostsPage() {
     const isX = snsTab === "x";
     const style = isX ? xStyle : thStyle;
     const postLength = isX ? xLength : thLength;
-    const character = isX ? xCharacter : thCharacter;
     const splitMode = isX ? false : thSplitMode;
     try {
       const res = await fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style, postLength: splitMode ? "standard" : postLength, splitMode, character: character !== "none" ? character : undefined, snsTarget: snsTab }),
+        body: JSON.stringify({ style, postLength: splitMode ? "standard" : postLength, splitMode, snsTarget: snsTab }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -315,7 +317,6 @@ export default function PostsPage() {
     return <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>;
   }
 
-  const canUseAllCharacters = planLevel(userPlan) >= 1;
   const isMultiSns = planLevel(userPlan) >= 2;
   const canUseSplit = planLevel(userPlan) >= 2;
   const FREE_STYLE_IDS = ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"];
@@ -326,9 +327,20 @@ export default function PostsPage() {
   const setCurrentStyle = isX ? setXStyle : setThStyle;
   const currentLength = isX ? xLength : thLength;
   const setCurrentLength = isX ? setXLength : setThLength;
-  const currentCharacter = isX ? xCharacter : thCharacter;
-  const setCurrentCharacter = isX ? setXCharacter : setThCharacter;
   const lengthOptions = isX ? LENGTH_OPTIONS_X : LENGTH_OPTIONS_THREADS;
+
+  // Save voice profile when it changes (debounced)
+  const saveVoiceProfile = useCallback(async (vp: VoiceProfile) => {
+    try {
+      await fetch("/api/style-defaults", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voiceProfile: vp }),
+      });
+    } catch (e) {
+      console.error("Failed to save voice profile:", e);
+    }
+  }, []);
 
   return (
     <div>
@@ -378,9 +390,7 @@ export default function PostsPage() {
                 const isPosting = posting === draft.id;
                 const slotConfig = draft.slot_config as any;
                 const styleLabel = STYLE_LABELS[draft.style_used] || draft.style_used;
-                const charLabel = slotConfig?.character && slotConfig.character !== "none"
-                  ? CHARACTER_OPTIONS.find(c => c.id === slotConfig.character)?.label
-                  : null;
+                const isSplitDraft = slotConfig?.split === true && draft.content.includes("\n\n---\n\n");
 
                 return (
                   <div key={draft.id} className={"border rounded-lg overflow-hidden transition-colors " + (draft.auto_post ? "border-brand-200 bg-brand-50/30" : "border-gray-200 bg-gray-50/50")}>
@@ -392,7 +402,6 @@ export default function PostsPage() {
                         </span>
                         {getSnsLabel(draft.sns_target)}
                         <span className="text-xs text-gray-500">{styleLabel}</span>
-                        {charLabel && <span className="text-xs text-gray-400">/ {charLabel}</span>}
                       </div>
                       <div className="flex items-center gap-3">
                         {/* Auto-post toggle */}
@@ -424,9 +433,25 @@ export default function PostsPage() {
                             <Button size="sm" variant="ghost" onClick={() => setEditingDraft(null)}>キャンセル</Button>
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{draft.content}</p>
-                      )}
+                      ) : (() => {
+                        if (isSplitDraft && draft.content) {
+                          const draftParts = draft.content.split("\n\n---\n\n");
+                          return (
+                            <div>
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{draftParts[0]}</p>
+                              <div className="flex items-center gap-2 my-2">
+                                <div className="h-px flex-1 bg-purple-200" />
+                                <span className="text-xs text-purple-500">↳ リプライ</span>
+                                <div className="h-px flex-1 bg-purple-200" />
+                              </div>
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{draftParts.slice(1).join("\n\n---\n\n")}</p>
+                            </div>
+                          );
+                        }
+                        // 非分割スロット: --- が混入していても除去して1つの投稿として表示
+                        const cleanContent = (draft.content || "").replace(/\n\n---\n\n/g, "\n\n");
+                        return <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{cleanContent}</p>;
+                      })()}
 
                       {/* Actions */}
                       {!isEditing && (
@@ -515,18 +540,177 @@ export default function PostsPage() {
                       title={s.desc}>{s.name}{locked && " 🔒"}</button>
                   );
                 })}
+                {customStyles.map((cs) => (
+                  <button key={cs.id}
+                    onClick={() => setCurrentStyle(cs.id)}
+                    className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
+                      (currentStyle === cs.id ? "border-purple-500 bg-purple-50 text-purple-700" :
+                        "border-purple-200 text-purple-600 hover:border-purple-300")}
+                    title={cs.desc}>{cs.name}</button>
+                ))}
               </div>
             </div>
 
-            {/* Character */}
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-2">キャラ設定</label>
-              <div className="flex flex-wrap gap-1.5">
-                {(canUseAllCharacters ? CHARACTER_OPTIONS : CHARACTER_OPTIONS.filter(c => FREE_CHARACTER_IDS.includes(c.id))).map((c) => (
-                  <button key={c.id} onClick={() => setCurrentCharacter(c.id)} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (currentCharacter === c.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")} title={c.desc}>{c.label}</button>
-                ))}
-                {!canUseAllCharacters && <a href="/pricing" className="px-3 py-1.5 text-xs text-amber-600 hover:text-amber-700">+7種 Proで解放 →</a>}
+            {/* Voice Profile Axes */}
+            <div className="space-y-3">
+              <a href="/dashboard/settings" className="inline-flex items-center text-xs text-brand-600 hover:text-brand-700 gap-1">
+                ⚙️ ボイス設定（詳細は設定ページで変更可能）
+              </a>
+
+              {/* Free axes */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">性別</label>
+                <div className="flex gap-1.5">
+                  {["male", "female"].map((val) => (
+                    <button key={val} onClick={() => { const nv = { ...voiceProfile, gender: val as "male" | "female" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                      className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.gender === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                      {val === "male" ? "男性" : "女性"}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">家族</label>
+                <div className="flex gap-1.5">
+                  {["single", "family"].map((val) => (
+                    <button key={val} onClick={() => { const nv = { ...voiceProfile, family: val as "single" | "family" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                      className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.family === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                      {val === "single" ? "単身" : "家族持ち"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">方言</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {["標準語", "関西弁", "博多弁"].map((val) => (
+                    <button key={val} onClick={() => { const nv = { ...voiceProfile, dialect: val }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                      className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.dialect === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                      {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Pro+ axes */}
+              {planLevel(userPlan) >= 1 && (
+                <div className="pt-2 space-y-3 border-t border-gray-100">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">年齢</label>
+                    <div className="flex gap-1.5">
+                      {["young", "middle", "old"].map((val) => (
+                        <button key={val} onClick={() => { const nv = { ...voiceProfile, age: val as "young" | "middle" | "old" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                          className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.age === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {val === "young" ? "若い" : val === "middle" ? "中年" : "年配"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">距離感</label>
+                    <div className="flex gap-1.5">
+                      {["teacher", "friend", "junior"].map((val) => (
+                        <button key={val} onClick={() => { const nv = { ...voiceProfile, distance: val as "teacher" | "friend" | "junior" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                          className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.distance === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {val === "teacher" ? "先生" : val === "friend" ? "友達" : "後輩"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">毒気</label>
+                    <div className="flex gap-1.5">
+                      {["toxic", "normal", "healing"].map((val) => (
+                        <button key={val} onClick={() => { const nv = { ...voiceProfile, toxicity: val as "toxic" | "normal" | "healing" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                          className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.toxicity === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {val === "toxic" ? "毒" : val === "normal" ? "普通" : "癒し"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">品格</label>
+                    <div className="flex gap-1.5">
+                      {["netizen", "normal", "elegant"].map((val) => (
+                        <button key={val} onClick={() => { const nv = { ...voiceProfile, elegance: val as "netizen" | "normal" | "elegant" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                          className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.elegance === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {val === "netizen" ? "ネット民" : val === "normal" ? "普通" : "紳士淑女"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">テンション</label>
+                    <div className="flex gap-1.5">
+                      {["high", "normal", "low"].map((val) => (
+                        <button key={val} onClick={() => { const nv = { ...voiceProfile, tension: val as "high" | "normal" | "low" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                          className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.tension === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {val === "high" ? "高い" : val === "normal" ? "普通" : "低い"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">絵文字</label>
+                    <div className="flex gap-1.5">
+                      {["many", "normal", "none"].map((val) => (
+                        <button key={val} onClick={() => { const nv = { ...voiceProfile, emoji: val as "many" | "normal" | "none" }; setVoiceProfile(nv); saveVoiceProfile(nv); }}
+                          className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (voiceProfile.emoji === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300")}>
+                          {val === "many" ? "多め" : val === "normal" ? "普通" : "なし"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Business: オリジナルボイス設定 */}
+              {planLevel(userPlan) >= 2 && (
+                <div className="pt-2 space-y-3 border-t border-gray-100">
+                  <p className="text-xs font-medium text-gray-500">オリジナルボイス設定</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">一人称</label>
+                      <input type="text" placeholder="例: ワイ, うち, わし" value={voiceProfile.customFirstPerson || ""}
+                        onChange={(e) => { const nv = { ...voiceProfile, customFirstPerson: e.target.value }; setVoiceProfile(nv); }}
+                        onBlur={() => saveVoiceProfile(voiceProfile)}
+                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">二人称</label>
+                      <input type="text" placeholder="例: きみ, おぬし, あなた様" value={voiceProfile.customSecondPerson || ""}
+                        onChange={(e) => { const nv = { ...voiceProfile, customSecondPerson: e.target.value }; setVoiceProfile(nv); }}
+                        onBlur={() => saveVoiceProfile(voiceProfile)}
+                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">語尾</label>
+                      <input type="text" placeholder="例: 〜やねん, 〜ですわ, 〜じゃ" value={voiceProfile.customEndings || ""}
+                        onChange={(e) => { const nv = { ...voiceProfile, customEndings: e.target.value }; setVoiceProfile(nv); }}
+                        onBlur={() => saveVoiceProfile(voiceProfile)}
+                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">口癖</label>
+                      <input type="text" placeholder="例: まぁ, ぶっちゃけ, なんというか" value={voiceProfile.customPhrases || ""}
+                        onChange={(e) => { const nv = { ...voiceProfile, customPhrases: e.target.value }; setVoiceProfile(nv); }}
+                        onBlur={() => saveVoiceProfile(voiceProfile)}
+                        className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {planLevel(userPlan) < 1 && (
+                <div className="text-xs text-gray-400">年齢・距離感・毒気・品格・テンション・絵文字はProプランで解放</div>
+              )}
             </div>
 
             {/* Length + Split */}
@@ -570,7 +754,8 @@ export default function PostsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-gray-900">{splitReply ? "プレビュー（分割投稿）" : "プレビュー"}</h2>
+                <h2 className="font-semibold text-gray-900">プレビュー</h2>
+                {splitReply && <span className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full">スレッド投稿</span>}
                 {previewTarget === "x" ? <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span> : <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}
               </div>
               <span className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-full">未投稿</span>
@@ -578,19 +763,22 @@ export default function PostsPage() {
           </CardHeader>
           <CardContent>
             <div className="mb-4">
-              {splitReply && <p className="text-xs font-medium text-gray-500 mb-1.5">フック（メイン投稿）</p>}
-              <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full bg-gray-50 rounded-lg p-4 text-gray-900 text-sm leading-relaxed border border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 outline-none resize-none" rows={splitReply ? 3 : 6} />
+              <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full bg-gray-50 rounded-lg p-4 text-gray-900 text-sm leading-relaxed border border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 outline-none resize-none" rows={6} />
               <p className="text-xs text-gray-400 mt-1">{editText.length} 文字</p>
             </div>
             {splitReply && (
               <div className="mb-4">
-                <p className="text-xs font-medium text-purple-600 mb-1.5">↳ リプライ（長文）</p>
-                <textarea value={editReply} onChange={(e) => setEditReply(e.target.value)} className="w-full bg-purple-50/50 rounded-lg p-4 text-gray-900 text-sm leading-relaxed border border-purple-200 focus:border-purple-400 focus:ring-1 focus:ring-purple-400 outline-none resize-none" rows={8} />
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="h-px flex-1 bg-purple-200" />
+                  <span className="text-xs font-medium text-purple-500">↳ リプライ</span>
+                  <div className="h-px flex-1 bg-purple-200" />
+                </div>
+                <textarea value={editReply} onChange={(e) => setEditReply(e.target.value)} className="w-full bg-gray-50 rounded-lg p-4 text-gray-900 text-sm leading-relaxed border border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-400 outline-none resize-none" rows={6} />
                 <p className="text-xs text-gray-400 mt-1">{editReply.length} 文字</p>
               </div>
             )}
             <div className="flex gap-2">
-              <Button size="sm" onClick={handlePost} disabled={!!posting}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : splitReply ? "Threads にスレッド投稿" : "Threads に投稿"}</Button>
+              <Button size="sm" onClick={handlePost} disabled={!!posting}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : "Threads に投稿"}</Button>
               <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating || limitReached}>再生成</Button>
               <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); }}>破棄</Button>
             </div>
@@ -619,7 +807,22 @@ export default function PostsPage() {
                       <div className="flex items-center gap-2">{getStatusBadge(post.status)}{post.style_used && <span className="text-xs text-gray-400">{STYLE_LABELS[post.style_used] || post.style_used}</span>}</div>
                       <span className="text-xs text-gray-400">{formatDate(post.created_at)}</span>
                     </div>
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3">{post.content}</p>
+                    {(() => {
+                      const pendParts = (post.content || "").split("\n\n---\n\n");
+                      return pendParts.length > 1 ? (
+                        <div className="mb-3">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{pendParts[0]}</p>
+                          <div className="flex items-center gap-2 my-1.5">
+                            <div className="h-px flex-1 bg-purple-200" />
+                            <span className="text-xs text-purple-500">↳ リプライ</span>
+                            <div className="h-px flex-1 bg-purple-200" />
+                          </div>
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{pendParts[1]}</p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3">{post.content}</p>
+                      );
+                    })()}
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => handleApprove(post.id, "approve")} disabled={approving === post.id}>{approving === post.id ? "処理中..." : "承認して投稿"}</Button>
                       <Button size="sm" variant="ghost" onClick={() => handleApprove(post.id, "redo")} disabled={approving === post.id}>再生成（削除）</Button>
@@ -659,10 +862,25 @@ export default function PostsPage() {
                       <button onClick={() => handleDelete(post.id)} disabled={deleting === post.id} className="text-xs text-gray-300 hover:text-red-500 transition-colors">{deleting === post.id ? "..." : "✕"}</button>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed line-clamp-4">{post.content}</p>
+                  {(() => {
+                    const histParts = (post.content || "").split("\n\n---\n\n");
+                    return histParts.length > 1 ? (
+                      <div>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed line-clamp-3">{histParts[0]}</p>
+                        <div className="flex items-center gap-2 my-1.5">
+                          <div className="h-px flex-1 bg-purple-200" />
+                          <span className="text-xs text-purple-400">↳ リプライ</span>
+                          <div className="h-px flex-1 bg-purple-200" />
+                        </div>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed line-clamp-3">{histParts[1]}</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed line-clamp-4">{post.content}</p>
+                    );
+                  })()}
                   <div className="flex items-center gap-3 mt-2">
                     {post.ai_model_used && <span className="text-xs text-gray-300">{post.ai_model_used}</span>}
-                    <span className="text-xs text-gray-300">{post.content.length}文字</span>
+                    <span className="text-xs text-gray-300">{(post.content || "").length}文字</span>
                   </div>
                 </div>
               ))}

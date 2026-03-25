@@ -38,9 +38,11 @@ export async function POST(request: Request) {
     const content = post.content;
     const snsTarget = post.sns_target || "x";
     const imageUrl = post.image_url || null;
+    const slotConfig = post.slot_config as any;
+    const isSplitSlot = slotConfig?.split === true;
     const parts = content.split("\n\n---\n\n");
-    const hookText = parts[0];
-    const replyText = parts.length > 1 ? parts[1] : null;
+    const hookText = isSplitSlot ? parts[0] : content.replace(/\n\n---\n\n/g, "\n\n");
+    const replyText = isSplitSlot && parts.length > 1 ? parts[1] : null;
 
     // Try posting via /api/post (uses user's stored credentials)
     const postRes = await fetch(

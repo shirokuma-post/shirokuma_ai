@@ -25,6 +25,7 @@ interface ScheduleSlot {
   character: string;
   length: string;
   split: boolean;
+  useTrend?: boolean;
 }
 
 // ---------- Service client (bypasses RLS) ----------
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
       if (slots.length === 0) continue;
 
       const userId = config.user_id;
-      const trendEnabled = config.trend_enabled ?? false;
+      const globalTrendEnabled = config.trend_enabled ?? false;
       const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
       try {
@@ -86,7 +87,7 @@ export async function GET(request: Request) {
           .gte("scheduled_at", todayStr + "T00:00:00+09:00")
           .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-        const postIds = await generateDraftsForUser(supabase, userId, slots, trendEnabled, trendCategories, todayStr);
+        const postIds = await generateDraftsForUser(supabase, userId, slots, globalTrendEnabled, trendCategories, todayStr);
         totalGenerated += postIds.length;
 
         // Schedule QStash delayed messages for each draft
@@ -152,7 +153,7 @@ async function generateDraftsForUser(
   supabase: any,
   userId: string,
   slots: ScheduleSlot[],
-  trendEnabled: boolean,
+  globalTrendEnabled: boolean,
   trendCategories: string[],
   todayStr: string,
 ): Promise<{ id: string; scheduledAt: string; userId: string }[]> {
@@ -191,9 +192,10 @@ async function generateDraftsForUser(
     }
   } catch {}
 
-  // 4. Get trend context (with category filter)
+  // 4. Get trend context (with category filter) — スロットのいずれかが使う場合のみ取得
+  const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend) || globalTrendEnabled;
   let trendContext = "";
-  if (trendEnabled) {
+  if (anySlotUsesTrend) {
     try {
       const cats = trendCategories.length > 0 ? trendCategories : ["general", "technology", "business"];
       let query = supabase
@@ -250,9 +252,11 @@ async function generateDraftsForUser(
         ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
         : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
 
+      // スロットごとにトレンド適用を判定
+      const slotUsesTrend = refSlot.useTrend || (!slots.some((s: ScheduleSlot) => s.useTrend !== undefined) && globalTrendEnabled);
       const systemFull = system
         + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
-        + trendContext;
+        + (slotUsesTrend ? trendContext : "");
 
       // Generate multiple posts in one call if count > 1
       const contents = await generateBatch(
@@ -302,7 +306,7 @@ function groupSlots(slots: ScheduleSlot[]): SlotGroup[] {
     // Group by: target + style + character + length + split + timeOfDay
     const hour = parseInt(slot.time.split(":")[0]);
     const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-    const key = `${slot.target}_${slot.style}_${slot.character}_${slot.length}_${slot.split}_${timeOfDay}`;
+    const key = `${slot.target}_${slot.style}_${slot.character}_${slot.length}_${slot.split}_${slot.useTrend || false}_${timeOfDay}`;
 
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push({ originalIndex: i, slot });

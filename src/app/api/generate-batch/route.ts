@@ -9,8 +9,8 @@ import {
   generateWithGoogle,
   LENGTH_CONFIGS,
   type PostLength,
-  type CharacterType,
   type SnsTarget,
+  type VoiceProfile,
 } from "@/lib/ai/generate-post";
 import type { PostStyle } from "@/types/database";
 import { buildLearningContext } from "@/lib/ai/learning-context";
@@ -23,6 +23,7 @@ interface ScheduleSlot {
   character: string;
   length: string;
   split: boolean;
+  useTrend?: boolean;
 }
 
 // POST /api/generate-batch — 手動一括生成
@@ -44,7 +45,9 @@ export async function POST(request: Request) {
     const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
     if (slots.length === 0) return NextResponse.json({ error: "投稿スロットがありません。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
-    const trendEnabled = config.trend_enabled ?? false;
+    // トレンド: スロットごとの useTrend を確認（後方互換: グローバル trend_enabled もフォールバック）
+    const globalTrendEnabled = config.trend_enabled ?? false;
+    const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend) || globalTrendEnabled;
     const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
     // Calculate today's date in JST
@@ -91,9 +94,9 @@ export async function POST(request: Request) {
       if (lp?.length) learningContext = buildLearningContext(lp);
     } catch {}
 
-    // Trend context (カテゴリフィルタ付き)
+    // Trend context (カテゴリフィルタ付き) — スロットのいずれかが使う場合のみ取得
     let trendContext = "";
-    if (trendEnabled) {
+    if (anySlotUsesTrend) {
       try {
         let query = supabase
           .from("daily_trends")
@@ -120,6 +123,20 @@ export async function POST(request: Request) {
       }
     } catch {}
 
+    // カスタムスタイル・ボイスプロフィールを取得
+    let customStyleDefs: any[] = [];
+    let voiceProfile: VoiceProfile | undefined;
+    try {
+      const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", user.id).single();
+      if (profile?.style_defaults) {
+        const sd = profile.style_defaults as any;
+        customStyleDefs = sd.customStyles || [];
+        if (sd.voiceProfile) {
+          voiceProfile = sd.voiceProfile as VoiceProfile;
+        }
+      }
+    } catch {}
+
     // Generate for each slot (batch: same-settings slots share one API call)
     const generated: any[] = [];
     const groups = groupSlots(slots);
@@ -131,18 +148,21 @@ export async function POST(request: Request) {
       const hour = parseInt(refSlot.time.split(":")[0]);
       const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
       const style = (refSlot.style || "mix") as PostStyle;
-      const character = (refSlot.character || "none") as CharacterType;
       const postLength = (refSlot.length || "standard") as PostLength;
       const isSplit = refSlot.target === "x" ? false : (refSlot.split || false);
       const snsTarget = refSlot.target;
 
-      const { system, user: userPrompt } = isSplit
-        ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
-        : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
+      const customStylePrompt = customStyleDefs.find((s: any) => s.id === style)?.prompt;
 
+      const { system, user: userPrompt } = isSplit
+        ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
+        : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
+
+      // スロットごとにトレンド適用を判定（後方互換: globalTrendEnabled もフォールバック）
+      const slotUsesTrend = refSlot.useTrend || (!slots.some((s: ScheduleSlot) => s.useTrend !== undefined) && globalTrendEnabled);
       const systemFull = system
         + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
-        + trendContext;
+        + (slotUsesTrend ? trendContext : "");
 
       // Batch prompt
       const contents = await generateBatch(provider, decryptedKey, systemFull, isSplit, postLength, count);
@@ -181,7 +201,7 @@ function groupSlots(slots: ScheduleSlot[]) {
   slots.forEach((slot, i) => {
     const hour = parseInt(slot.time.split(":")[0]);
     const tod = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-    const key = `${slot.target}_${slot.style}_${slot.character}_${slot.length}_${slot.split}_${tod}`;
+    const key = `${slot.target}_${slot.style}_${slot.character}_${slot.length}_${slot.split}_${slot.useTrend || false}_${tod}`;
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push({ originalIndex: i, slot });
   });
@@ -196,7 +216,8 @@ async function generateBatch(provider: string, apiKey: string, systemPrompt: str
     const mt = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
     const raw = await callAI(provider, apiKey, systemPrompt, up, mt);
     if (isSplit) { const p = parseSplitPost(raw); if (p) return [p.hook + "\n\n---\n\n" + p.reply]; }
-    return [raw.trim()];
+    // 非分割: --- を強制除去
+    return [raw.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim()];
   }
 
   const up = isSplit
@@ -212,11 +233,11 @@ async function generateBatch(provider: string, apiKey: string, systemPrompt: str
     const t = part.trim();
     if (!t) continue;
     if (isSplit) { const p = parseSplitPost(t); results.push(p ? p.hook + "\n\n---\n\n" + p.reply : t); }
-    else results.push(t);
+    else results.push(t.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim());
   }
   if (results.length === 0) {
     if (isSplit) { const p = parseSplitPost(raw); if (p) return [p.hook + "\n\n---\n\n" + p.reply]; }
-    return [raw.trim()];
+    return [raw.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim()];
   }
   return results;
 }

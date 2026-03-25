@@ -8,7 +8,7 @@ export function buildLearningContext(learningPosts: any[]): string {
 
   if (analyses.length === 0) {
     // No AI analysis, just use raw posts as examples
-    const examples = learningPosts.slice(0, 5).map((p: any) => p.content).join("\n---\n");
+    const examples = learningPosts.slice(0, 5).map((p: any, i: number) => `【例${i + 1}】\n${p.content}`).join("\n\n");
     return `\n■ 参考: 過去に伸びた投稿の例:\n${examples}\n\nこれらの投稿のトーン・構造・表現を参考にしてください。`;
   }
 
@@ -18,7 +18,7 @@ export function buildLearningContext(learningPosts: any[]): string {
   const tones = analyses.map((p: any) => p.ai_analysis.tone).filter(Boolean);
   const techniques = analyses.map((p: any) => p.ai_analysis.key_technique).filter(Boolean);
 
-  const examples = learningPosts.slice(0, 3).map((p: any) => p.content).join("\n---\n");
+  const examples = learningPosts.slice(0, 3).map((p: any, i: number) => `【例${i + 1}】\n${p.content}`).join("\n\n");
 
   return `
 ■ 学習データ（過去に伸びた投稿の分析結果）:

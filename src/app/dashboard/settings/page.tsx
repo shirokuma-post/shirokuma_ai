@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import type { VoiceProfile } from "@/lib/ai/generate-post";
 
 type AiProvider = "anthropic" | "openai" | "google";
 
@@ -31,10 +32,19 @@ export default function SettingsPage() {
   const [xKeys, setXKeys] = useState({ consumerKey: "", consumerSecret: "", accessToken: "", accessTokenSecret: "" });
   const [threadsKeys, setThreadsKeys] = useState({ accessToken: "", userId: "" });
   const [postStyle, setPostStyle] = useState("mix");
-  const [character, setCharacter] = useState("none");
   const [userPlan, setUserPlan] = useState("free");
   const [customStyles, setCustomStyles] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
-  const [customCharacters, setCustomCharacters] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile>({
+    gender: "male",
+    family: "single",
+    dialect: "標準語",
+    age: "middle",
+    distance: "friend",
+    toxicity: "normal",
+    elegance: "normal",
+    tension: "normal",
+    emoji: "normal",
+  });
   const [savingStyle, setSavingStyle] = useState(false);
   const [savedStyle, setSavedStyle] = useState(false);
   const [defaultTrendCategories, setDefaultTrendCategories] = useState<string[]>(["general", "technology", "business"]);
@@ -71,9 +81,10 @@ export default function SettingsPage() {
         const styleData = await styleRes.json();
         if (styleData.defaults) {
           setPostStyle(styleData.defaults.style || "mix");
-          setCharacter(styleData.defaults.character || "none");
           setCustomStyles(styleData.defaults.customStyles || []);
-          setCustomCharacters(styleData.defaults.customCharacters || []);
+          if (styleData.defaults.voiceProfile) {
+            setVoiceProfile(styleData.defaults.voiceProfile);
+          }
           if (styleData.defaults.defaultTrendCategories) setDefaultTrendCategories(styleData.defaults.defaultTrendCategories);
         }
         if (styleData.plan) setUserPlan(styleData.plan);
@@ -193,7 +204,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/style-defaults", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style: postStyle, character, customStyles, customCharacters, defaultTrendCategories }),
+        body: JSON.stringify({ style: postStyle, customStyles, voiceProfile, defaultTrendCategories }),
       });
       if (!res.ok) { alert("保存に失敗: " + (await res.json()).error); setSavingStyle(false); return; }
       setSavedStyle(true); setTimeout(() => setSavedStyle(false), 3000);
@@ -207,7 +218,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style: postStyle, character, snsTarget: testSns }),
+        body: JSON.stringify({ style: postStyle, snsTarget: testSns }),
       });
       const data = await res.json();
       if (!res.ok) { setTestResult("エラー: " + (data.error || "生成失敗")); }
@@ -216,11 +227,10 @@ export default function SettingsPage() {
     setTestGenerating(false);
   }
 
-  function handleAddCustom(type: "style" | "character") {
+  function handleAddCustom(type: "style") {
     if (!customForm.name.trim() || !customForm.prompt.trim()) return;
     const item = { id: Date.now().toString(), name: customForm.name, desc: customForm.desc, prompt: customForm.prompt };
-    if (type === "style") setCustomStyles(prev => [...prev, item]);
-    else setCustomCharacters(prev => [...prev, item]);
+    setCustomStyles(prev => [...prev, item]);
     setCustomForm({ name: "", desc: "", prompt: "" });
     setShowCustomForm(null);
   }
@@ -352,8 +362,14 @@ export default function SettingsPage() {
                       <span className="text-xs px-2 py-0.5 bg-green-50 text-green-700 rounded-full">適用中</span>
                     </div>
                     <div className="space-y-2 text-xs text-gray-700">
-                      {structuredSummary.axiom && (
-                        <div><span className="font-semibold text-gray-900">ビジョン:</span> {structuredSummary.axiom}</div>
+                      {(structuredSummary.belief || structuredSummary.axiom) && (
+                        <div><span className="font-semibold text-gray-900">信念:</span> {structuredSummary.belief || structuredSummary.axiom}</div>
+                      )}
+                      {(structuredSummary.origin || structuredSummary.structure) && (
+                        <div><span className="font-semibold text-gray-900">原体験:</span> {structuredSummary.origin || structuredSummary.structure}</div>
+                      )}
+                      {(structuredSummary.passion || structuredSummary.logic) && (
+                        <div><span className="font-semibold text-gray-900">情熱:</span> {structuredSummary.passion || structuredSummary.logic}</div>
                       )}
                       {structuredSummary.weapons?.length > 0 && (
                         <div>
@@ -366,10 +382,13 @@ export default function SettingsPage() {
                         </div>
                       )}
                       {structuredSummary.stance && (
-                        <div><span className="font-semibold text-gray-900">主張:</span> {structuredSummary.stance}</div>
+                        <div><span className="font-semibold text-gray-900">スタンス:</span> {structuredSummary.stance}</div>
+                      )}
+                      {(structuredSummary.vision || structuredSummary.method) && (
+                        <div><span className="font-semibold text-gray-900">ビジョン:</span> {structuredSummary.vision || structuredSummary.method}</div>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 mt-3">この他にも理論構造・トーンなどが投稿生成に反映されています。再分析したい場合は「AIで構造化」を再度押してください。</p>
+                    <p className="text-xs text-gray-400 mt-3">再分析したい場合は「AIで構造化」を再度押してください。</p>
                   </div>
                 )}
               </div>
@@ -585,28 +604,177 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">キャラ設定</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: "none", name: "なし", desc: "キャラなし（デフォルト）" },
-                      { id: "gal", name: "ギャル", desc: "カジュアルに共感ベースで" },
-                      { id: "philosopher", name: "哲学者", desc: "静かに深く問う" },
-                      { id: "housewife", name: "主婦", desc: "生活者目線で鋭く" },
-                      { id: "salaryman", name: "サラリーマン", desc: "あるある系の気づき" },
-                      { id: "senpai", name: "先輩", desc: "経験を共有する" },
-                      { id: "otaku", name: "オタク", desc: "早口で本質を突く" },
-                      { id: "gyaru_mama", name: "ギャルママ", desc: "軽いのに深い" },
-                      { id: "kouhai", name: "後輩", desc: "素直に驚く発見型" },
-                      { id: "grandma", name: "おばあちゃん", desc: "穏やかに人生の知恵" },
-                      { id: "child", name: "子ども", desc: "無邪気に刺す" },
-                      ...customCharacters.map(cc => ({ id: cc.id, name: cc.name, desc: cc.desc })),
-                    ].map((c) => (
-                      <button key={c.id} onClick={() => setCharacter(c.id)}
-                        className={`p-2.5 rounded-lg border text-left transition-colors ${character === c.id ? "border-brand-500 bg-brand-50" : "border-gray-200 hover:border-gray-300"}`}>
-                        <p className="text-sm font-medium text-gray-900">{c.name}</p>
-                        <p className="text-xs text-gray-500">{c.desc}</p>
-                      </button>
-                    ))}
+                  <label className="block text-sm font-medium text-gray-700 mb-2">ボイス設定（軸ベース）</label>
+                  <p className="text-xs text-gray-500 mb-3">複数の軸を組み合わせて、あなたのボイスをカスタマイズ</p>
+                  <div className="space-y-4">
+                    {/* Free axes */}
+                    <div>
+                      <p className="text-xs font-medium text-gray-600 mb-2">性別</p>
+                      <div className="flex gap-2">
+                        {["male", "female"].map((val) => (
+                          <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, gender: val as "male" | "female" })}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                              voiceProfile.gender === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                            }`}>
+                            {val === "male" ? "男性" : "女性"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium text-gray-600 mb-2">家族</p>
+                      <div className="flex gap-2">
+                        {["single", "family"].map((val) => (
+                          <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, family: val as "single" | "family" })}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                              voiceProfile.family === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                            }`}>
+                            {val === "single" ? "単身" : "家族持ち"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium text-gray-600 mb-2">方言</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {["標準語", "関西弁", "博多弁"].map((val) => (
+                          <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, dialect: val })}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                              voiceProfile.dialect === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                            }`}>
+                            {val}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pro+ axes */}
+                    {userPlan !== "free" && (
+                      <>
+                        <div className="pt-2 border-t border-gray-200">
+                          <p className="text-xs font-medium text-gray-600 mb-2">年齢</p>
+                          <div className="flex gap-2">
+                            {["young", "middle", "old"].map((val) => (
+                              <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, age: val as "young" | "middle" | "old" })}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                                  voiceProfile.age === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                }`}>
+                                {val === "young" ? "若い" : val === "middle" ? "中年" : "老人"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-600 mb-2">距離感</p>
+                          <div className="flex gap-2">
+                            {["teacher", "friend", "junior"].map((val) => (
+                              <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, distance: val as "teacher" | "friend" | "junior" })}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                                  voiceProfile.distance === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                }`}>
+                                {val === "teacher" ? "先生" : val === "friend" ? "友達" : "後輩"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-600 mb-2">毒気</p>
+                          <div className="flex gap-2">
+                            {["toxic", "normal", "healing"].map((val) => (
+                              <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, toxicity: val as "toxic" | "normal" | "healing" })}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                                  voiceProfile.toxicity === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                }`}>
+                                {val === "toxic" ? "毒" : val === "normal" ? "普通" : "癒し"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-600 mb-2">品格</p>
+                          <div className="flex gap-2">
+                            {["netizen", "normal", "elegant"].map((val) => (
+                              <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, elegance: val as "netizen" | "normal" | "elegant" })}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                                  voiceProfile.elegance === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                }`}>
+                                {val === "netizen" ? "ネット民" : val === "normal" ? "普通" : "紳士淑女"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-600 mb-2">テンション</p>
+                          <div className="flex gap-2">
+                            {["high", "normal", "low"].map((val) => (
+                              <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, tension: val as "high" | "normal" | "low" })}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                                  voiceProfile.tension === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                }`}>
+                                {val === "high" ? "高い" : val === "normal" ? "普通" : "低い"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-medium text-gray-600 mb-2">絵文字</p>
+                          <div className="flex gap-2">
+                            {["many", "normal", "none"].map((val) => (
+                              <button key={val} onClick={() => setVoiceProfile({ ...voiceProfile, emoji: val as "many" | "normal" | "none" })}
+                                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                                  voiceProfile.emoji === val ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
+                                }`}>
+                                {val === "many" ? "多め" : val === "normal" ? "普通" : "なし"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {userPlan === "free" && (
+                      <p className="text-xs text-gray-400">年齢・距離感・毒気・品格・テンション・絵文字はProプランで解放</p>
+                    )}
+
+                    {/* Business: オリジナルボイス設定 */}
+                    {userPlan === "business" && (
+                      <div className="pt-3 mt-3 border-t border-gray-100 space-y-3">
+                        <p className="text-xs font-medium text-gray-600">オリジナルボイス設定（Business限定）</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">一人称</label>
+                            <input type="text" placeholder="例: ワイ, うち, わし" value={voiceProfile.customFirstPerson || ""}
+                              onChange={(e) => setVoiceProfile({ ...voiceProfile, customFirstPerson: e.target.value })}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">二人称</label>
+                            <input type="text" placeholder="例: きみ, おぬし, あなた様" value={voiceProfile.customSecondPerson || ""}
+                              onChange={(e) => setVoiceProfile({ ...voiceProfile, customSecondPerson: e.target.value })}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">語尾</label>
+                            <input type="text" placeholder="例: 〜やねん, 〜ですわ, 〜じゃ" value={voiceProfile.customEndings || ""}
+                              onChange={(e) => setVoiceProfile({ ...voiceProfile, customEndings: e.target.value })}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">口癖</label>
+                            <input type="text" placeholder="例: まぁ, ぶっちゃけ, なんというか" value={voiceProfile.customPhrases || ""}
+                              onChange={(e) => setVoiceProfile({ ...voiceProfile, customPhrases: e.target.value })}
+                              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -653,13 +821,13 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* カスタムスタイル・キャラ（Pro以上） */}
+          {/* カスタムスタイル（Pro以上） */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-semibold text-gray-900">オリジナル設定</h2>
-                  <p className="text-sm text-gray-500 mt-1">自分だけのスタイルやキャラを作成</p>
+                  <h2 className="font-semibold text-gray-900">カスタムスタイル</h2>
+                  <p className="text-sm text-gray-500 mt-1">自分だけの投稿スタイルを作成</p>
                 </div>
                 {userPlan === "free" && (
                   <span className="text-xs px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full">Pro プラン以上</span>
@@ -668,7 +836,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               {userPlan === "free" ? (
-                <p className="text-sm text-gray-500">Proプラン以上にアップグレードすると、オリジナルの投稿スタイルやキャラ設定を作成できます。</p>
+                <p className="text-sm text-gray-500">Proプラン以上にアップグレードすると、オリジナルの投稿スタイルを作成できます。</p>
               ) : (
                 <div className="space-y-4">
                   {/* 既存カスタム一覧 */}
@@ -689,30 +857,11 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   )}
-                  {customCharacters.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase mb-2">カスタムキャラ</p>
-                      <div className="space-y-2">
-                        {customCharacters.map((cc, i) => (
-                          <div key={cc.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg">
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">{cc.name}</p>
-                              <p className="text-xs text-gray-500">{cc.desc}</p>
-                            </div>
-                            <button onClick={() => setCustomCharacters(prev => prev.filter((_, j) => j !== i))}
-                              className="text-gray-400 hover:text-red-500 text-xs">削除</button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {/* 追加フォーム */}
-                  {showCustomForm ? (
+                  {showCustomForm && showCustomForm === "style" ? (
                     <div className="p-4 border border-gray-200 rounded-lg space-y-3">
-                      <p className="text-sm font-medium text-gray-900">
-                        {showCustomForm === "style" ? "カスタムスタイル追加" : "カスタムキャラ追加"}
-                      </p>
+                      <p className="text-sm font-medium text-gray-900">カスタムスタイル追加</p>
                       <input type="text" placeholder="名前（例: 皮肉屋）" value={customForm.name}
                         onChange={e => setCustomForm(p => ({ ...p, name: e.target.value }))}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -723,7 +872,7 @@ export default function SettingsPage() {
                         value={customForm.prompt} onChange={e => setCustomForm(p => ({ ...p, prompt: e.target.value }))}
                         rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none" />
                       <div className="flex gap-2">
-                        <Button onClick={() => handleAddCustom(showCustomForm)} disabled={!customForm.name.trim() || !customForm.prompt.trim()}>
+                        <Button onClick={() => handleAddCustom("style")} disabled={!customForm.name.trim() || !customForm.prompt.trim()}>
                           追加
                         </Button>
                         <Button variant="secondary" onClick={() => { setShowCustomForm(null); setCustomForm({ name: "", desc: "", prompt: "" }); }}>
@@ -732,13 +881,10 @@ export default function SettingsPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <Button variant="secondary" onClick={() => setShowCustomForm("style")}>+ スタイル追加</Button>
-                      <Button variant="secondary" onClick={() => setShowCustomForm("character")}>+ キャラ追加</Button>
-                    </div>
+                    <Button variant="secondary" onClick={() => setShowCustomForm("style")}>+ スタイル追加</Button>
                   )}
 
-                  <p className="text-xs text-gray-400">追加後「保存する」を押すと反映されます（最大各5個）</p>
+                  <p className="text-xs text-gray-400">追加後「保存する」を押すと反映されます（最大5個）</p>
                 </div>
               )}
             </CardContent>

@@ -26,29 +26,41 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { style, character, customStyles, customCharacters, defaultTrendCategories } = body;
+  const { style, character, customStyles, customCharacters, defaultTrendCategories, voiceProfile } = body;
 
-  // Pro以上でなければカスタム設定は保存しない
+  // 既存の style_defaults を取得（マージ用）
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan")
+    .select("plan, style_defaults")
     .eq("id", user.id)
     .single();
 
   const isPro = profile?.plan === "pro" || profile?.plan === "business";
   const isBusiness = profile?.plan === "business";
+  const existing = (profile?.style_defaults as any) || {};
 
+  // 既存データとマージ（送られたフィールドのみ上書き）
   const defaults: any = {
-    style: style || "mix",
-    character: character || "none",
+    ...existing,
+    style: style ?? existing.style ?? "mix",
+    character: character ?? existing.character ?? "none",
   };
 
-  if (isPro) {
-    defaults.customStyles = (customStyles || []).slice(0, 5); // 最大5個
-    defaults.customCharacters = (customCharacters || []).slice(0, 5);
+  // voiceProfile が送られてきたら保存
+  if (voiceProfile !== undefined) {
+    defaults.voiceProfile = voiceProfile;
   }
 
-  if (isBusiness && defaultTrendCategories) {
+  if (isPro) {
+    if (customStyles !== undefined) {
+      defaults.customStyles = (customStyles || []).slice(0, 5); // 最大5個
+    }
+    if (customCharacters !== undefined) {
+      defaults.customCharacters = (customCharacters || []).slice(0, 5);
+    }
+  }
+
+  if (isBusiness && defaultTrendCategories !== undefined) {
     defaults.defaultTrendCategories = defaultTrendCategories;
   }
 

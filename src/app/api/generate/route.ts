@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { buildPrompt, buildSplitPrompt, parseSplitPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS } from "@/lib/ai/generate-post";
+import { buildPrompt, buildSplitPrompt, parseSplitPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS, type VoiceProfile } from "@/lib/ai/generate-post";
 import { buildLearningContext } from "@/lib/ai/learning-context";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import type { PostStyle } from "@/types/database";
-import type { PostLength, CharacterType, SnsTarget } from "@/lib/ai/generate-post";
+import type { PostLength, SnsTarget } from "@/lib/ai/generate-post";
 
 export async function POST(request: Request) {
   try {
@@ -22,13 +22,11 @@ export async function POST(request: Request) {
       style = "mix",
       postLength = "standard",
       splitMode = false,
-      character = "none",
       snsTarget = "x",
     } = body as {
       style?: PostStyle;
       postLength?: PostLength;
       splitMode?: boolean;
-      character?: CharacterType;
       snsTarget?: SnsTarget;
     };
 
@@ -95,11 +93,26 @@ export async function POST(request: Request) {
       // Non-fatal
     }
 
+    // 7.5. ボイスプロフィールとカスタムスタイルを取得
+    let customStylePrompt: string | undefined;
+    let voiceProfile: VoiceProfile | undefined;
+    const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", authUser.id).single();
+    if (profile?.style_defaults) {
+      const sd = profile.style_defaults as any;
+      if (sd.customStyles) {
+        const cs = sd.customStyles.find((s: any) => s.id === style);
+        if (cs) customStylePrompt = cs.prompt;
+      }
+      if (sd.voiceProfile) {
+        voiceProfile = sd.voiceProfile as VoiceProfile;
+      }
+    }
+
     // 8. プロンプト生成
     // ai_optimized のときは learningContext をプロンプトビルダーに直接渡す（主軸として使う）
     const { system, user } = splitMode
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
 
     // ai_optimized 以外は学習データを補助的に後付け
     const systemWithLearning = system
@@ -121,6 +134,14 @@ export async function POST(request: Request) {
         break;
       default:
         return NextResponse.json({ error: "Unsupported AI provider: " + aiProvider }, { status: 400 });
+    }
+
+    // 8.5. 非分割の場合、--- を強制除去 + 過剰改行を圧縮
+    if (!splitMode) {
+      rawContent = rawContent
+        .replace(/\n*---\n*/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")  // 3行以上の空行 → 1行空き
+        .trim();
     }
 
     // 9. レスポンス

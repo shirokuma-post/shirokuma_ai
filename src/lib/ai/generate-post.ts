@@ -68,102 +68,166 @@ const TIME_TONES: Record<string, string> = {
 export type PostLength = "short" | "standard" | "long";
 
 export const LENGTH_CONFIGS: Record<PostLength, { label: string; description: string; prompt: string; maxTokens: number }> = {
-  short: { label: "短い", description: "60文字前後", prompt: "50〜70文字以内で書く。一文で刺す。パンチラインのみ。", maxTokens: 200 },
-  standard: { label: "標準", description: "120〜140文字", prompt: "120〜140文字で書く。X投稿に最適化。", maxTokens: 500 },
-  long: { label: "長い", description: "400〜500文字", prompt: "400〜500文字で書く。段落を分けて読みやすく。冒頭で引き込み、中盤で深掘り、最後にオチ。必ず最後まで書き切ること。", maxTokens: 1500 },
+  short: { label: "短い", description: "60文字前後", prompt: "【文字数厳守】50〜70文字以内。これを超えるな。一文で刺す。", maxTokens: 500 },
+  standard: { label: "標準", description: "120〜140文字", prompt: "【文字数厳守】120〜140文字で書く。", maxTokens: 800 },
+  long: { label: "長い", description: "400〜500文字", prompt: "400〜500文字で書く。段落を分けて読みやすく。必ず最後まで書き切ること。", maxTokens: 2000 },
 };
 
-// 視座（キャラクターの立ち位置）
-export type Perspective = "上" | "横" | "下";
+// =====================================================
+// ボイスプロフィール（軸ベースのキャラクター設定）
+// =====================================================
+export type Distance = "teacher" | "friend" | "junior";
 
-// 視座別ベースプロンプト — キャラの立ち位置に応じてAIの「人格」が変わる
-const PERSPECTIVE_BASE: Record<Perspective, string> = {
-  上: `あなたは、いろいろ経験してきた人間です。SNSに自分の考えを書いています。
+// 後方互換のため残す（型参照のみ）
+export type CharacterType = string;
+// 後方互換: 旧 perspective → distance マッピング
+export type Perspective = "above" | "normal" | "below";
+const PERSPECTIVE_TO_DISTANCE: Record<string, Distance> = { above: "teacher", normal: "friend", below: "junior" };
+
+export interface VoiceProfile {
+  // Free プラン（3軸）
+  gender: "male" | "female";
+  family: "single" | "family";
+  dialect: string;  // "標準語", "関西弁", "博多弁" etc. or custom
+  // Pro プラン（+6軸）
+  age?: "young" | "middle" | "old";
+  distance?: Distance;  // 先生 / 友達 / 後輩
+  perspective?: Perspective;  // 後方互換（旧データ用）
+  toxicity?: "toxic" | "normal" | "healing";
+  elegance?: "netizen" | "normal" | "elegant";
+  tension?: "high" | "normal" | "low";
+  emoji?: "many" | "normal" | "none";
+  // Business プラン（オリジナルボイス設定）
+  customFirstPerson?: string;   // 一人称（例: ワイ, うち, わし）
+  customSecondPerson?: string;  // 二人称（例: きみ, おぬし, あなた様）
+  customEndings?: string;       // 語尾（例: 〜やねん, 〜ですわ, 〜じゃ）
+  customPhrases?: string;       // 口癖（例: まぁ, ぶっちゃけ, なんというか）
+}
+
+export const DEFAULT_VOICE_PROFILE: VoiceProfile = {
+  gender: "male",
+  family: "single",
+  dialect: "標準語",
+  age: "middle",
+  distance: "friend",
+  toxicity: "normal",
+  elegance: "normal",
+  tension: "normal",
+  emoji: "normal",
+};
+
+// 距離感別ベースプロンプト
+const DISTANCE_BASE: Record<Distance, string> = {
+  teacher: `あなたは、いろいろ経験してきた人間です。SNSに自分の考えを書いています。
 説教はしない。でも「あのとき気づいたこと」を、ふと振り返るように書く。
-正解を教えるんじゃなく、「自分はこう思った」を静かに置く感じ。`,
-  横: `あなたは、日々の暮らしの中で「ふと気づいたこと」をSNSに書いている普通の人です。
+正解を教えるんじゃなく、「自分はこう思った」を静かに置く感じ。先生っぽいけど偉そうじゃない。`,
+  friend: `あなたは、日々の暮らしの中で「ふと気づいたこと」をSNSに書いている普通の人です。
 理論を語るのではなく、生活の中で感じたことを自分の言葉で書いてください。
-完璧な文章は要りません。「あー、わかる」と思ってもらえることが一番大事。`,
-  下: `あなたは、まだいろんなことを知らない側の人間です。SNSに「今日気づいたこと」を書いています。
+完璧な文章は要りません。「あー、わかる」と思ってもらえることが一番大事。友達に話す感じ。`,
+  junior: `あなたは、まだいろんなことを知らない側の人間です。SNSに「今日気づいたこと」を書いています。
 知ったかぶりはしない。「え、これってそういうことだったの？」という素直な驚きが武器。
-教える立場じゃなく、一緒に「へぇ〜」ってなる感じで書く。`,
+教える立場じゃなく、一緒に「へぇ〜」ってなる感じで書く。後輩が先輩に話しかけるような距離感。`,
 };
 
-// キャラ設定
-export type CharacterType = "none" | "gal" | "philosopher" | "housewife" | "salaryman" | "senpai" | "otaku" | "gyaru_mama" | "kouhai" | "grandma" | "child";
+// ボイスプロフィールからプロンプトを構築
+export function buildVoicePrompt(vp: VoiceProfile): { basePrompt: string; voiceDirective: string } {
+  // distance（新） or perspective（旧データ互換）からベースプロンプト決定
+  const distance: Distance = vp.distance || (vp.perspective ? PERSPECTIVE_TO_DISTANCE[vp.perspective] : "friend") || "friend";
+  const basePrompt = DISTANCE_BASE[distance];
 
-export const CHARACTERS: Record<CharacterType, { label: string; description: string; prompt: string }> = {
-  none: { label: "なし", description: "キャラなし（デフォルト）", prompt: "" },
-  gal: {
-    label: "ギャル",
-    description: "カジュアルに同意を求めながら本質をつく",
-    prompt: "ギャルの口調で書く。「〜じゃん？」「わかるー」「それってさぁ」など同意を求めるカジュアルな言葉。断定より共感ベース。軽いノリで深いことを言う。読者と同じ目線。絵文字は使わない。",
-  },
-  philosopher: {
-    label: "哲学者",
-    description: "静かに深く、問いを投げかける",
-    prompt: "哲学者のように静かで深い口調。「〜ではないだろうか」「問うべきは〜だ」など。簡潔だが考えさせる表現。",
-  },
-  housewife: {
-    label: "主婦",
-    description: "生活者目線で鋭く本質を突く",
-    prompt: "主婦の生活者目線で書く。「ねぇ、これって〜じゃない？」「スーパーの帰りに気づいたんだけど」など日常から真理を引き出す口調。",
-  },
-  salaryman: {
-    label: "サラリーマン",
-    description: "通勤電車で考えた、あるある系の気づき",
-    prompt: "普通のサラリーマンの口調。「わかるわ…」「あるある」「電車で思ったんだけど」。特別じゃない日常から出てくる気づき。共感ベースで、上から目線じゃない。疲れてるけど考えることはやめてない感じ。",
-  },
-  senpai: {
-    label: "先輩",
-    description: "「俺もそうだったけどさ」と経験を共有する",
-    prompt: "少し年上の先輩の口調。「俺もそうだったけどさ」「最初はみんなそうだよ」「ひとつだけ言えるのは」。説教じゃなく経験の共有。失敗談も混ぜる。上からじゃなく横から、でも少しだけ先を歩いてる感じ。",
-  },
-  otaku: {
-    label: "オタク",
-    description: "早口で情報量多め、独特の比喩",
-    prompt: "オタクの早口口調。「いや待って」「これ要するに」「〜なんですよ（早口）」など。独特の比喩や例えで本質を突く。",
-  },
-  gyaru_mama: {
-    label: "ギャルママ",
-    description: "子育て経験から得た人生の真理",
-    prompt: "ギャルママの口調。元ギャルだけど子育てで悟った感じ。「アタシさぁ」「子ども見てて思ったんだけど」。軽いのに深い。",
-  },
-  kouhai: {
-    label: "後輩",
-    description: "「え、これすごくないですか？」素直に驚く発見型",
-    prompt: "後輩の口調。「え、これすごくないですか？」「今日知ったんですけど」「自分まだ全然わかってないんですけど」。素直な驚きと発見。知ったかぶりしない。読者と一緒に学んでる感じ。下からの視座。",
-  },
-  grandma: {
-    label: "おばあちゃん",
-    description: "人生の知恵を穏やかに語る",
-    prompt: "おばあちゃんの口調。「あのねぇ」「昔はね」「まぁ、なんとかなるよ」。人生の知恵を穏やかに語る。説教じゃない。温かい。ゆっくりだけど芯がある。「大丈夫だよ」と言ってくれる安心感。",
-  },
-  child: {
-    label: "子ども",
-    description: "無邪気な疑問が大人を刺す",
-    prompt: "子どもの口調。「ねぇ、なんで？」「大人ってへんなの」。無邪気な疑問が核心を突く。シンプルな言葉で真理を言い当てる。",
-  },
-};
+  const parts: string[] = [];
 
-// キャラクター → 視座マッピング
-const CHARACTER_PERSPECTIVE: Record<CharacterType, Perspective> = {
-  none: "横",         // デフォルトは横（同じ目線）
-  gal: "横",          // カジュアルに同意を求める → 横
-  philosopher: "上",  // 静かに深く問う → 上
-  housewife: "横",    // 生活者目線 → 横
-  salaryman: "横",    // あるある系の気づき → 横
-  senpai: "上",       // 経験を共有する → 上
-  otaku: "横",        // 早口で情報量多め → 横
-  gyaru_mama: "横",   // 子育て経験 → 横
-  kouhai: "下",       // 素直に驚く発見型 → 下
-  grandma: "上",      // 人生の知恵を穏やかに → 上
-  child: "下",        // 無邪気な疑問 → 下
-};
+  // 性別 → 一人称・二人称（カスタム設定があれば上書き）
+  const hasCustomPerson = vp.customFirstPerson?.trim() || vp.customSecondPerson?.trim();
+  if (hasCustomPerson) {
+    // Business: カスタム一人称・二人称
+    if (vp.customFirstPerson?.trim()) {
+      parts.push(`一人称は「${vp.customFirstPerson.trim()}」を使う。他の一人称は使わない。`);
+    }
+    if (vp.customSecondPerson?.trim()) {
+      parts.push(`二人称は「${vp.customSecondPerson.trim()}」を使う。`);
+    }
+    parts.push(vp.gender === "male" ? "男性の話し言葉を使う。" : "女性の話し言葉を使う。「俺」「おまえ」は絶対禁止。");
+  } else if (vp.gender === "male") {
+    parts.push("一人称は「俺」「僕」。二人称は「お前」「あんた」「みんな」。男性の話し言葉を使う。");
+  } else {
+    parts.push("一人称は「私」「アタシ」。二人称は「あなた」「みんな」。「俺」「おまえ」は絶対禁止。女性の話し言葉を使う。");
+  }
 
-function getBasePerspectivePrompt(character: CharacterType): string {
-  const perspective = CHARACTER_PERSPECTIVE[character];
-  return PERSPECTIVE_BASE[perspective];
+  // 家族
+  if (vp.family === "family") {
+    parts.push("家族持ち。子どもや配偶者の話題を自然に入れてOK。「うちの子が〜」「嫁が〜」「旦那が〜」など生活感のある表現。");
+  } else {
+    parts.push("独身。自分の時間・生活が軸。");
+  }
+
+  // 方言
+  if (vp.dialect && vp.dialect !== "標準語") {
+    parts.push(`${vp.dialect}で書く。語尾・言い回しは自然な${vp.dialect}にする。標準語に直さないこと。`);
+  } else {
+    // 標準語の場合、明示的に指示（カスタム語尾に引きずられないように）
+    parts.push("標準語で書く。方言は使わない。「〜へん」「〜やねん」「〜とる」などの方言表現は禁止。");
+  }
+
+  // 年齢
+  const age = vp.age || "middle";
+  if (age === "young") {
+    parts.push("若者の感性。トレンドに敏感。「マジで」「ヤバい」など若い表現OK。経験は浅いが感度が高い。");
+  } else if (age === "old") {
+    parts.push("年配者の落ち着き。長い経験に裏打ちされた言葉。急がない。「昔はね」「歳をとるとわかるんだけど」。穏やかだけど芯がある。");
+  }
+
+  // 毒気
+  const toxicity = vp.toxicity || "normal";
+  if (toxicity === "toxic") {
+    parts.push("毒舌。皮肉やブラックユーモアを使う。ズバッと切る。でもただの悪口にはしない。愛がある毒。");
+  } else if (toxicity === "healing") {
+    parts.push("癒し系。温かい言葉で包む。否定しない。「大丈夫だよ」「それでいいんだよ」。読んだ人がホッとする。");
+  }
+
+  // 品格
+  const elegance = vp.elegance || "normal";
+  if (elegance === "netizen") {
+    parts.push("ネット民っぽい口調。「草」「それな」「〜してて草」などネットスラング混じり。カジュアルで砕けた表現。でも読みやすく。");
+  } else if (elegance === "elegant") {
+    parts.push("紳士淑女の品のある口調。丁寧だけど堅すぎない。知性を感じさせる表現。下品な言葉は使わない。");
+  }
+
+  // テンション
+  const tension = vp.tension || "normal";
+  if (tension === "high") {
+    parts.push("テンション高め。「！」を多めに使う。勢いがある。テンポよく畳みかける。エネルギッシュな文体。");
+  } else if (tension === "low") {
+    parts.push("テンション低め。「！」はほぼ使わない。ぼそっとつぶやく感じ。「…」が似合う。静かだけど味がある。");
+  }
+
+  // 絵文字
+  const emoji = vp.emoji || "normal";
+  if (emoji === "many") {
+    parts.push("絵文字を積極的に使う。感情を絵文字で表現。1投稿に2〜4個程度。ただし乱用はしない。😊🔥💡✨ など。");
+  } else if (emoji === "none") {
+    parts.push("絵文字は一切使わない。テキストのみで勝負。顔文字も不要。");
+  }
+  // normal = 自然に任せる（特別な指示なし）
+
+  // Business: カスタム語尾
+  if (vp.customEndings?.trim()) {
+    const isStandard = !vp.dialect || vp.dialect === "標準語";
+    parts.push(`語尾は「${vp.customEndings.trim()}」のような表現を使う。文末にこの語尾を自然に取り入れること。${isStandard ? "ただし語尾以外の文章は標準語のまま。語尾だけをカスタムにすること。方言全体に引きずられるな。" : ""}`);
+  }
+
+  // Business: 口癖
+  if (vp.customPhrases?.trim()) {
+    parts.push(`口癖: 「${vp.customPhrases.trim()}」を会話の中に自然に混ぜる。毎文には不要だが、数回は入れること。`);
+  }
+
+  return { basePrompt, voiceDirective: parts.join("\n") };
+}
+
+// 後方互換: 旧CharacterType → VoiceProfile変換（既存データ用）
+export function characterToVoiceProfile(character: string): VoiceProfile | null {
+  // "none" や旧キャラIDの場合はnullを返す（デフォルト使用）
+  return null;
 }
 
 // =====================================================
@@ -180,37 +244,40 @@ const BANNED_WORDS = [
 // AI臭さ防止（シンプル版）
 // =====================================================
 const ANTI_AI_RULES = `■ 禁止:
-「〜ではないでしょうか」「〜しましょう」「〜してみてください」禁止。カタカナビジネス用語禁止。ハッシュタグ禁止。きれいにまとまりすぎるな。`;
+「〜ではないでしょうか」「〜しましょう」「〜してみてください」禁止。カタカナビジネス用語禁止。ハッシュタグ禁止。きれいにまとまりすぎるな。
+「---」や「───」などの水平線・区切り線は絶対に使うな。投稿本文に含めてはいけない。
+
+■ 改行ルール:
+1行ごとに空行を入れるな。改行は意味の区切りだけで使え。連続した空行は禁止。
+文章は詰めて書け。ポエムみたいに1行ずつ改行するな。普通のSNS投稿のように自然な改行だけにしろ。`;
 
 
 // SNSプラットフォーム別の特性
 export type SnsTarget = "x" | "threads";
 
 const SNS_CONTEXT: Record<SnsTarget, string> = {
-  x: `■ プラットフォーム: X (旧Twitter)
-- 140文字が基本。短く、鋭く、一撃で刺す。
-- スクロールの手を止めさせるインパクト重視。
-- 余計な説明は省く。パンチラインで勝負。
-- 改行は最小限。`,
-  threads: `■ プラットフォーム: Threads
-- 500文字まで使える。X より深く語れる。
-- 共感・ストーリー性を大事に。
-- 段落を分けて読みやすく。
-- 最初の2行で引き込み、最後にオチや問いかけ。
-- カジュアルで親しみやすいトーン。`,
+  x: `■ X (旧Twitter): インパクト重視。スクロールの手を止めさせる。`,
+  threads: `■ Threads: 共感・カジュアルさ重視。親しみやすいトーン。`,
 };
 
 // =====================================================
-// 構造化サマリー（7カテゴリ、部分入力OK）
+// 構造化サマリー（6カテゴリ: 論理3 + 感情3、部分入力OK）
 // =====================================================
 export interface StructuredSummary {
-  axiom?: string;        // 【公理】唯一の前提
-  structure?: string;    // 【構造】理論の骨格
-  logic?: string;        // 【ロジック】導出の筋道
-  weapons?: string[];    // 【武器】投稿で使えるフレームワーク
+  // 論理系
+  belief?: string;       // 【信念】これだけは譲れない核心
+  weapons?: string[];    // 【武器】投稿で使えるフレームワーク・切り口
   stance?: string;       // 【スタンス】何を否定し、何を主張するか
-  method?: string;       // 【メソッド】実践の手順
-  voice?: string;        // 【声】口調・トーンの特徴
+  // 感情系
+  origin?: string;       // 【原体験】なぜそう思うようになったか（ストーリー）
+  passion?: string;      // 【情熱】届けたいもの・自分の中で燃えているもの
+  vision?: string;       // 【ビジョン】届いた先の変化（人→社会）
+  // 後方互換（旧データ用）
+  axiom?: string;        // 旧【公理】→ belief にマッピング
+  structure?: string;    // 旧【構造】→ origin にマッピング
+  logic?: string;        // 旧【ロジック】→ passion にマッピング
+  method?: string;       // 旧【メソッド】→ vision にマッピング
+  voice?: string;        // 旧【声】→ 削除（ボイスプロフィールに移管）
 }
 
 export function parseStructuredSummary(summary: string | null): StructuredSummary | null {
@@ -228,13 +295,29 @@ export function parseStructuredSummary(summary: string | null): StructuredSummar
 
 function buildStructuredContext(s: StructuredSummary): string {
   const sections: string[] = [];
-  if (s.axiom)     sections.push(`■ 公理（絶対前提）:\n${s.axiom}`);
-  if (s.structure)  sections.push(`■ 理論構造:\n${s.structure}`);
-  if (s.logic)      sections.push(`■ ロジック（なぜそう言えるか）:\n${s.logic}`);
+
+  // 信念（新）or 公理（旧）
+  const belief = s.belief || s.axiom;
+  if (belief) sections.push(`■ 信念（これだけは譲れないこと）:\n${belief}`);
+
+  // 原体験（新）or 理論構造（旧）
+  const origin = s.origin || s.structure;
+  if (origin) sections.push(`■ 原体験（なぜそう思うようになったか）:\n${origin}`);
+
+  // 情熱（新）or ロジック（旧）
+  const passion = s.passion || s.logic;
+  if (passion) sections.push(`■ 情熱（届けたいもの）:\n${passion}`);
+
+  // 武器
   if (s.weapons?.length) sections.push(`■ 武器（切り口フレームワーク）:\n${s.weapons.map(w => `- ${w}`).join("\n")}`);
-  if (s.stance)     sections.push(`■ スタンス（何を否定し何を主張するか）:\n${s.stance}`);
-  if (s.method)     sections.push(`■ メソッド（実践手順）:\n${s.method}`);
-  if (s.voice)      sections.push(`■ 声・トーン:\n${s.voice}`);
+
+  // スタンス
+  if (s.stance) sections.push(`■ スタンス（何を否定し何を主張するか）:\n${s.stance}`);
+
+  // ビジョン（新）or メソッド（旧）
+  const vision = s.vision || s.method;
+  if (vision) sections.push(`■ ビジョン（届いた先の変化）:\n${vision}`);
+
   return sections.join("\n\n");
 }
 
@@ -275,16 +358,19 @@ interface GenerateOptions {
   style: PostStyle;
   timeOfDay: "morning" | "noon" | "night";
   postLength?: PostLength;
-  character?: CharacterType;
+  voiceProfile?: VoiceProfile;
+  character?: CharacterType;  // 後方互換（無視される）
   snsTarget?: SnsTarget;
   customBannedWords?: string[];
   customPrompt?: string;
   learningContext?: string;
   recentPosts?: string[];
+  customStylePrompt?: string;      // カスタムスタイルのプロンプト
+  customCharacterPrompt?: string;   // カスタムキャラのプロンプト（後方互換、無視される）
 }
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, customPrompt, learningContext, recentPosts } = options;
+  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customBannedWords, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
 
   // ai_optimized: 学習データが主軸、スタイルはAIが自動選択
   if (style === "ai_optimized") {
@@ -296,37 +382,40 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
     : style;
 
   const lengthConfig = LENGTH_CONFIGS[postLength];
-  const charConfig = CHARACTERS[character];
+  const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
+  const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
+  const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
 
-  const basePrompt = getBasePerspectivePrompt(character);
-
   const system = `${basePrompt}
-${charConfig.prompt ? `\n${charConfig.prompt}\n` : ""}
+
+${voiceDirective}
+
 ■ 想い（直接語らず、にじみ出るように）:
 ${philosophyContext}
 
-■ スタイル: ${STYLE_PROMPTS[actualStyle]}
+■ スタイル: ${stylePrompt}
 
 ■ トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-■ 文字数: ${lengthConfig.prompt} 必ず最後まで書き切ること。
-
 ${ANTI_AI_RULES}
 ${antiRepetition}
-${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
+${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}
 
-  const user = "上記をふまえて、SNS投稿を1つ書いてください。投稿テキストのみを出力。説明や前置きは不要。必ず最後まで書き切ること。";
+■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。`;
+
+  const user = `${lengthConfig.prompt} SNS投稿を1つ書いてください。投稿テキストのみ出力。`;
   return { system, user };
 }
 
 function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, timeOfDay, postLength = "standard", character = "none", snsTarget, customBannedWords, learningContext, recentPosts } = options;
+  const { philosophy, timeOfDay, postLength = "standard", voiceProfile, snsTarget, learningContext, recentPosts } = options;
 
   const lengthConfig = LENGTH_CONFIGS[postLength];
-  const charConfig = CHARACTERS[character];
+  const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
+  const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const philosophyContext = getPhilosophyContext(philosophy);
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
 
@@ -334,10 +423,10 @@ function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; use
 
   const hasLearning = learningContext && learningContext.trim().length > 0;
 
-  const basePrompt = getBasePerspectivePrompt(character);
-
   const system = `${basePrompt}
-${charConfig.prompt ? `\n${charConfig.prompt}\n` : ""}
+
+${voiceDirective}
+
 ■ 想い（直接語らず、にじみ出るように）:
 ${philosophyContext}
 
@@ -350,14 +439,14 @@ ${styleOptions}
 ■ トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-■ 文字数: ${lengthConfig.prompt} 必ず最後まで書き切ること。
-
 ${ANTI_AI_RULES}
-${antiRepetition}`;
+${antiRepetition}
+
+■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。`;
 
   const user = hasLearning
-    ? "学習データの勝ちパターンを最大限活用して、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。"
-    : "この想いと時間帯に最適なスタイルを選んで、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
+    ? `${lengthConfig.prompt} 学習データの勝ちパターンを活用してSNS投稿を1つ。投稿テキストのみ出力。`
+    : `${lengthConfig.prompt} SNS投稿を1つ。投稿テキストのみ出力。`;
   return { system, user };
 }
 
@@ -365,12 +454,14 @@ ${antiRepetition}`;
 // 分割投稿（フック → リプライ）— 好奇心ギャップ式
 // =====================================================
 export function buildSplitPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, character = "none", snsTarget, customBannedWords, customPrompt, recentPosts } = options;
+  const { philosophy, style, timeOfDay, voiceProfile, snsTarget, customPrompt, recentPosts, customStylePrompt } = options;
   const actualStyle = style === "mix"
     ? RANDOM_STYLES[Math.floor(Math.random() * RANDOM_STYLES.length)]
     : style;
 
-  const charConfig = CHARACTERS[character];
+  const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
+  const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
+  const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
 
@@ -385,21 +476,21 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
   ];
   const hookStyle = hookVariations[Math.floor(Math.random() * hookVariations.length)];
 
-  const basePrompt = getBasePerspectivePrompt(character);
-
   const system = `${basePrompt}
-${charConfig.prompt ? `\n${charConfig.prompt}\n` : ""}
+
+${voiceDirective}
+
 ■ 想い（直接語らず、にじみ出るように）:
 ${philosophyContext}
 
-■ スタイル: ${STYLE_PROMPTS[actualStyle]}
+■ スタイル: ${stylePrompt}
 
 ■ トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
 ■ 分割投稿フォーマット:
 【hook】${hookStyle} 50〜70文字。続きを読みたくなる一文。
-【reply】300〜500文字。hookの期待に応える。最後にオチか問いかけ。
+【reply】300〜500文字。hookの期待に応える。最後にオチか問いかけ。改行は段落の区切りだけに使え。1文ごとに改行するな。2〜3文をひとかたまりにして、段落間だけ改行。
 
 JSON形式のみ出力: {"hook": "...", "reply": "..."}
 
@@ -411,15 +502,25 @@ ${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
   return { system, user };
 }
 
+// 過剰改行を圧縮するヘルパー
+function compactLineBreaks(text: string): string {
+  return text.replace(/\n{3,}/g, "\n\n").replace(/  +/g, " ").trim();
+}
+
 export function parseSplitPost(text: string): { hook: string; reply: string } | null {
   try {
     const cleaned = text.replace(/\`\`\`json?\n?/g, "").replace(/\`\`\`/g, "").trim();
     const parsed = JSON.parse(cleaned);
-    if (parsed.hook && parsed.reply) return { hook: parsed.hook, reply: parsed.reply };
+    if (parsed.hook && parsed.reply) return { hook: compactLineBreaks(parsed.hook), reply: compactLineBreaks(parsed.reply) };
     return null;
   } catch {
     const match = text.match(/\{[\s\S]*"hook"[\s\S]*"reply"[\s\S]*\}/);
-    if (match) { try { return JSON.parse(match[0]); } catch { return null; } }
+    if (match) {
+      try {
+        const p = JSON.parse(match[0]);
+        if (p.hook && p.reply) return { hook: compactLineBreaks(p.hook), reply: compactLineBreaks(p.reply) };
+      } catch { return null; }
+    }
     return null;
   }
 }
