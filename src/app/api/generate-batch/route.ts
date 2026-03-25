@@ -158,8 +158,8 @@ export async function POST(request: Request) {
         ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
         : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
 
-      // スロットごとにトレンド適用を判定（後方互換: globalTrendEnabled もフォールバック）
-      const slotUsesTrend = refSlot.useTrend || (!slots.some((s: ScheduleSlot) => s.useTrend !== undefined) && globalTrendEnabled);
+      // スロットごとにトレンド適用を判定（明示的にONにしたスロットのみ）
+      const slotUsesTrend = refSlot.useTrend === true;
       const systemFull = system
         + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
         + (slotUsesTrend ? trendContext : "");

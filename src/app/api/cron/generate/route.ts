@@ -12,6 +12,7 @@ import {
   type PostLength,
   type CharacterType,
   type SnsTarget,
+  type VoiceProfile,
 } from "@/lib/ai/generate-post";
 import type { PostStyle } from "@/types/database";
 import { buildLearningContext } from "@/lib/ai/learning-context";
@@ -227,6 +228,16 @@ async function generateDraftsForUser(
     }
   } catch {}
 
+  // 5.5. ボイスプロフィールを取得
+  let voiceProfile: VoiceProfile | undefined;
+  try {
+    const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", userId).single();
+    if (profile?.style_defaults) {
+      const sd = profile.style_defaults as any;
+      if (sd.voiceProfile) voiceProfile = sd.voiceProfile as VoiceProfile;
+    }
+  } catch {}
+
   // 6. Batch generate: グループ化して一括生成
   // 同じ設定のスロットをまとめて1回のAPIコールで複数投稿を生成（コスト削減）
   const generatedPosts: { id: string; scheduledAt: string; userId: string }[] = [];
@@ -249,11 +260,11 @@ async function generateDraftsForUser(
 
     try {
       const { system, user } = isSplit
-        ? buildSplitPrompt({ philosophy, style, timeOfDay, character, snsTarget, recentPosts: recentPostContents })
-        : buildPrompt({ philosophy, style, timeOfDay, postLength, character, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
+        ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents })
+        : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents });
 
-      // スロットごとにトレンド適用を判定
-      const slotUsesTrend = refSlot.useTrend || (!slots.some((s: ScheduleSlot) => s.useTrend !== undefined) && globalTrendEnabled);
+      // スロットごとにトレンド適用を判定（明示的にONにしたスロットのみ）
+      const slotUsesTrend = refSlot.useTrend === true;
       const systemFull = system
         + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
         + (slotUsesTrend ? trendContext : "");
