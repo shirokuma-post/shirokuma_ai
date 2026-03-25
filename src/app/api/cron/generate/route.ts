@@ -193,8 +193,8 @@ async function generateDraftsForUser(
     }
   } catch {}
 
-  // 4. Get trend context (with category filter) — スロットのいずれかが使う場合のみ取得
-  const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend) || globalTrendEnabled;
+  // 4. Get trend context (with category filter) — 明示的にONのスロットがある場合のみ取得
+  const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend === true);
   let trendContext = "";
   if (anySlotUsesTrend) {
     try {

@@ -45,9 +45,8 @@ export async function POST(request: Request) {
     const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
     if (slots.length === 0) return NextResponse.json({ error: "投稿スロットがありません。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
-    // トレンド: スロットごとの useTrend を確認（後方互換: グローバル trend_enabled もフォールバック）
-    const globalTrendEnabled = config.trend_enabled ?? false;
-    const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend) || globalTrendEnabled;
+    // トレンド: スロットごとの useTrend を確認（明示的にONのスロットがある場合のみ取得）
+    const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend === true);
     const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
     // Calculate today's date in JST
