@@ -23,11 +23,13 @@ export async function POST(request: Request) {
       postLength = "standard",
       splitMode = false,
       snsTarget = "x",
+      voiceProfile: requestVoiceProfile,
     } = body as {
       style?: PostStyle;
       postLength?: PostLength;
       splitMode?: boolean;
       snsTarget?: SnsTarget;
+      voiceProfile?: VoiceProfile;
     };
 
     // 3. ユーザーのマイコンセプトを取得
@@ -95,7 +97,9 @@ export async function POST(request: Request) {
 
     // 7.5. ボイスプロフィールとカスタムスタイルを取得
     let customStylePrompt: string | undefined;
-    let voiceProfile: VoiceProfile | undefined;
+    // リクエストから送られたvoiceProfileを最優先で使用（UIの最新状態）
+    // DBはフォールバックのみ
+    let voiceProfile: VoiceProfile | undefined = requestVoiceProfile;
     const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", authUser.id).single();
     if (profile?.style_defaults) {
       const sd = profile.style_defaults as any;
@@ -103,10 +107,12 @@ export async function POST(request: Request) {
         const cs = sd.customStyles.find((s: any) => s.id === style);
         if (cs) customStylePrompt = cs.prompt;
       }
-      if (sd.voiceProfile) {
+      // リクエストにvoiceProfileがなければDBから取得（バッチ生成時など）
+      if (!voiceProfile && sd.voiceProfile) {
         voiceProfile = sd.voiceProfile as VoiceProfile;
       }
     }
+    console.log("[generate] voiceProfile source:", requestVoiceProfile ? "request" : "db", "dialect:", voiceProfile?.dialect, "customEndings:", voiceProfile?.customEndings);
 
     // 8. プロンプト生成
     // ai_optimized のときは learningContext をプロンプトビルダーに直接渡す（主軸として使う）
