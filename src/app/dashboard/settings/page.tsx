@@ -55,6 +55,8 @@ export default function SettingsPage() {
   const [savedKeys, setSavedKeys] = useState<string[]>([]);
   const [structuring, setStructuring] = useState(false);
   const [structuredSummary, setStructuredSummary] = useState<any>(null);
+  const [linkCode, setLinkCode] = useState<{ code: string; purpose: string } | null>(null);
+  const [linkCodeLoading, setLinkCodeLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -261,6 +263,24 @@ export default function SettingsPage() {
 
   function isKeySaved(provider: string) {
     return savedKeys.some(k => k.startsWith(provider + ":"));
+  }
+
+  async function handleGenerateLinkCode(purpose: "api_keys" | "philosophy") {
+    setLinkCodeLoading(true);
+    try {
+      const res = await fetch("/api/gpts/link-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purpose }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLinkCode({ code: data.code, purpose });
+      }
+    } catch (e) {
+      console.error("Link code error:", e);
+    }
+    setLinkCodeLoading(false);
   }
 
   const tabs = [
@@ -477,6 +497,52 @@ export default function SettingsPage() {
                   </Button>
                   {savedThreads && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* GPTs連携 */}
+          <Card>
+            <CardHeader>
+              <h2 className="font-semibold text-gray-900">GPTsで設定する</h2>
+              <p className="text-sm text-gray-500 mt-1">専用のGPTsアシスタントが対話形式でAPIキーの取得・設定をサポートします。</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {linkCode ? (
+                  <div>
+                    <div className="bg-gray-900 rounded-xl p-4 text-center">
+                      <p className="text-xs text-gray-400 mb-1">連携コード（GPTsに入力してください）</p>
+                      <p className="text-3xl font-mono font-bold text-white tracking-widest">{linkCode.code}</p>
+                      <p className="text-xs text-gray-400 mt-2">有効期限: 15分</p>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <a href="https://chatgpt.com/g/g-69c283b258308191b4ab8f49cf339cd7-sirokumahosuto-apijie-sok-asisutanto"
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex-1 py-2.5 bg-brand-600 text-white rounded-lg font-medium text-sm text-center hover:bg-brand-700 transition-colors">
+                        API接続アシスタントを開く
+                      </a>
+                      <a href="https://chatgpt.com/g/g-69c281c0b1f08191aaecac0f4c4100a9-sirokumahosuto-maikonsehutozuo-cheng-asisutanto"
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex-1 py-2.5 bg-brand-600 text-white rounded-lg font-medium text-sm text-center hover:bg-brand-700 transition-colors">
+                        マイコンセプト作成を開く
+                      </a>
+                    </div>
+                    <button onClick={() => setLinkCode(null)}
+                      className="mt-2 text-xs text-gray-400 hover:text-gray-600">
+                      コードを閉じる
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <Button onClick={() => handleGenerateLinkCode("api_keys")} disabled={linkCodeLoading}>
+                      {linkCodeLoading ? "発行中..." : "API接続用コードを発行"}
+                    </Button>
+                    <Button variant="secondary" onClick={() => handleGenerateLinkCode("philosophy")} disabled={linkCodeLoading}>
+                      {linkCodeLoading ? "発行中..." : "マイコンセプト用コードを発行"}
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

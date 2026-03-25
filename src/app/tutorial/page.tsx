@@ -59,14 +59,17 @@ export default function TutorialPage() {
           const data = await res.json();
           if (data.snsProvider) {
             setSnsProvider(data.snsProvider);
-            if (data.setup?.hasAiKey && data.setup?.hasConcept) {
+            // SNS APIキー + AI APIキー + コンセプト全てあればセットアップ完了
+            if (data.setup?.hasSnsKey && data.setup?.hasAiKey && data.setup?.hasConcept) {
               setCurrentStep("schedule");
               setApiKeyStatus("completed");
               setPhilosophyStatus("completed");
-            } else if (data.setup?.hasAiKey) {
+            } else if (data.setup?.hasSnsKey && data.setup?.hasAiKey) {
+              // SNS・AIのAPIキーはあるがコンセプト未登録
               setCurrentStep("philosophy");
               setApiKeyStatus("completed");
             } else {
+              // APIキーが不足 → API接続ステップへ
               setCurrentStep("api_keys");
             }
           }
