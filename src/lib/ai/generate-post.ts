@@ -78,8 +78,6 @@ export const LENGTH_CONFIGS: Record<PostLength, { label: string; description: st
 // =====================================================
 export type Distance = "teacher" | "friend" | "junior";
 
-// 後方互換のため残す（型参照のみ）
-export type CharacterType = string;
 // 後方互換: 旧 perspective → distance マッピング
 export type Perspective = "above" | "normal" | "below";
 const PERSPECTIVE_TO_DISTANCE: Record<string, Distance> = { above: "teacher", normal: "friend", below: "junior" };
@@ -222,12 +220,6 @@ export function buildVoicePrompt(vp: VoiceProfile): { basePrompt: string; voiceD
   return { basePrompt, voiceDirective: parts.join("\n") };
 }
 
-// 後方互換: 旧CharacterType → VoiceProfile変換（既存データ用）
-export function characterToVoiceProfile(character: string): VoiceProfile | null {
-  // "none" や旧キャラIDの場合はnullを返す（デフォルト使用）
-  return null;
-}
-
 // =====================================================
 // 文体ガイド（ポジティブ指示中心）
 // =====================================================
@@ -349,20 +341,17 @@ interface GenerateOptions {
   timeOfDay: "morning" | "noon" | "night";
   postLength?: PostLength;
   voiceProfile?: VoiceProfile;
-  character?: CharacterType;  // 後方互換（無視される）
   snsTarget?: SnsTarget;
-  customBannedWords?: string[];
   customPrompt?: string;
   learningContext?: string;
   recentPosts?: string[];
-  customStylePrompt?: string;      // カスタムスタイルのプロンプト
-  customCharacterPrompt?: string;   // カスタムキャラのプロンプト（後方互換、無視される）
+  customStylePrompt?: string;
 }
 
 // 方言指示はbuildVoicePromptに統合済み。個別のリマインダーは不要。
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customBannedWords, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
+  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
 
   // ai_optimized: 学習データが主軸、スタイルはAIが自動選択
   if (style === "ai_optimized") {

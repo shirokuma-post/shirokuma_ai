@@ -1,31 +1,19 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
+  fetchUserGenerationContext,
+  fetchTrendContext,
+  groupSlots,
+  getTimeOfDay,
+  buildFullSystemPrompt,
+  generateBatch,
+  parseGeneratedContent,
   buildPrompt,
   buildSplitPrompt,
-  parseSplitPost,
-  parseTitleAndPost,
-  generateWithAnthropic,
-  generateWithOpenAI,
-  generateWithGoogle,
-  LENGTH_CONFIGS,
+  type ScheduleSlot,
   type PostLength,
-  type SnsTarget,
-  type VoiceProfile,
-} from "@/lib/ai/generate-post";
-import type { PostStyle } from "@/types/database";
-import { buildLearningContext } from "@/lib/ai/learning-context";
-import { decrypt } from "@/lib/crypto";
-
-interface ScheduleSlot {
-  time: string;
-  target: SnsTarget;
-  style: string;
-  character?: string;  // 後方互換（未使用）
-  length: string;
-  split: boolean;
-  useTrend?: boolean;
-}
+  type PostStyle,
+} from "@/lib/ai/generation-service";
 
 // POST /api/generate-batch — 手動一括生成
 export async function POST(request: Request) {
@@ -34,7 +22,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Get schedule config
+    // スケジュール設定を取得
     const { data: config } = await supabase
       .from("schedule_configs")
       .select("*")
@@ -46,16 +34,11 @@ export async function POST(request: Request) {
     const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
     if (slots.length === 0) return NextResponse.json({ error: "投稿スロットがありません。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
-    // トレンド: スロットごとの useTrend を確認（明示的にONのスロットがある場合のみ取得）
-    const anySlotUsesTrend = slots.some((s: ScheduleSlot) => s.useTrend === true);
-    const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
-
-    // Calculate today's date in JST
-    const now = new Date();
-    const jstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    // 日付計算（JST）
+    const jstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
     const todayStr = jstNow.toISOString().split("T")[0];
 
-    // Delete existing drafts for today
+    // 既存ドラフト削除
     await supabase
       .from("posts")
       .delete()
@@ -64,80 +47,15 @@ export async function POST(request: Request) {
       .gte("scheduled_at", todayStr + "T00:00:00+09:00")
       .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-    // Get philosophy
-    const { data: philosophy } = await supabase
-      .from("philosophies")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .single();
+    // ユーザーの生成コンテキストを一括取得
+    const ctx = await fetchUserGenerationContext(supabase, user.id);
 
-    if (!philosophy) return NextResponse.json({ error: "マイコンセプトが未設定です。設定画面からあなたの想いを登録してください。" }, { status: 400 });
+    // トレンド（必要な場合のみ）
+    const anySlotUsesTrend = slots.some((s) => s.useTrend === true);
+    const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
+    const trendContext = anySlotUsesTrend ? await fetchTrendContext(supabase, trendCategories) : "";
 
-    // Get AI key
-    const { data: aiKeys } = await supabase
-      .from("api_keys")
-      .select("*")
-      .eq("user_id", user.id)
-      .in("provider", ["anthropic", "openai", "google"]);
-
-    const aiKey = aiKeys?.[0];
-    if (!aiKey) return NextResponse.json({ error: "AI APIキーが未設定です。Settings画面でAPIキーを登録してください。" }, { status: 400 });
-
-    const provider = aiKey.provider;
-    const decryptedKey = decrypt(aiKey.encrypted_value);
-
-    // Learning context
-    let learningContext = "";
-    try {
-      const { data: lp } = await supabase.from("learning_posts").select("*").eq("user_id", user.id);
-      if (lp?.length) learningContext = buildLearningContext(lp);
-    } catch {}
-
-    // Trend context (カテゴリフィルタ付き) — スロットのいずれかが使う場合のみ取得
-    let trendContext = "";
-    if (anySlotUsesTrend) {
-      try {
-        let query = supabase
-          .from("daily_trends")
-          .select("title, summary, category")
-          .order("fetched_at", { ascending: false })
-          .limit(10);
-        if (trendCategories.length > 0) {
-          query = query.in("category", trendCategories);
-        }
-        const { data: trends } = await query;
-        if (trends?.length) {
-          const list = trends.slice(0, 5).map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
-          trendContext = `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${list}`;
-        }
-      } catch {}
-    }
-
-    // Recent posts (for anti-repetition)
-    let recentPostContents: string[] = [];
-    try {
-      const { data: rp } = await supabase.from("posts").select("content").eq("user_id", user.id).in("status", ["posted", "draft"]).order("created_at", { ascending: false }).limit(10);
-      if (rp?.length) {
-        recentPostContents = rp.map((p: any) => p.content);
-      }
-    } catch {}
-
-    // カスタムスタイル・ボイスプロフィールを取得
-    let customStyleDefs: any[] = [];
-    let voiceProfile: VoiceProfile | undefined;
-    try {
-      const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", user.id).single();
-      if (profile?.style_defaults) {
-        const sd = profile.style_defaults as any;
-        customStyleDefs = sd.customStyles || [];
-        if (sd.voiceProfile) {
-          voiceProfile = sd.voiceProfile as VoiceProfile;
-        }
-      }
-    } catch {}
-
-    // Generate for each slot (batch: same-settings slots share one API call)
+    // グループ化して一括生成
     const generated: any[] = [];
     const groups = groupSlots(slots);
 
@@ -145,34 +63,26 @@ export async function POST(request: Request) {
       const refSlot = group.slots[0].slot;
       const count = group.slots.length;
 
-      const hour = parseInt(refSlot.time.split(":")[0]);
-      const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
+      const timeOfDay = getTimeOfDay(refSlot.time);
       const style = (refSlot.style || "mix") as PostStyle;
       const postLength = (refSlot.length || "standard") as PostLength;
       const isSplit = refSlot.target === "x" ? false : (refSlot.split || false);
       const snsTarget = refSlot.target;
+      const customStylePrompt = ctx.customStyleDefs.find((s) => s.id === style)?.prompt;
 
-      const customStylePrompt = customStyleDefs.find((s: any) => s.id === style)?.prompt;
+      const { system } = isSplit
+        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt })
+        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt });
 
-      const { system, user: userPrompt } = isSplit
-        ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
-        : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
-
-      // スロットごとにトレンド適用を判定（明示的にONにしたスロットのみ）
       const slotUsesTrend = refSlot.useTrend === true;
-      const systemFull = system
-        + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
-        + (slotUsesTrend ? trendContext : "");
+      const systemFull = buildFullSystemPrompt(system, style, ctx.learningContext, slotUsesTrend ? trendContext : "");
 
-      // Batch prompt
-      const contents = await generateBatch(provider, decryptedKey, systemFull, isSplit, postLength, count);
+      const contents = await generateBatch(ctx.provider, ctx.decryptedKey, systemFull, isSplit, postLength, count);
 
       for (let ci = 0; ci < contents.length && ci < group.slots.length; ci++) {
         const { originalIndex, slot } = group.slots[ci];
         const scheduledAt = `${todayStr}T${slot.time}:00+09:00`;
-
-        // タイトル+投稿テキストをパース（分割投稿はタイトルなし）
-        const parsed = isSplit ? { title: "", post: contents[ci] } : parseTitleAndPost(contents[ci]);
+        const parsed = parseGeneratedContent(contents[ci], isSplit);
 
         const { data: post } = await supabase.from("posts").insert({
           user_id: user.id,
@@ -181,7 +91,7 @@ export async function POST(request: Request) {
           style_used: style,
           status: "draft",
           scheduled_at: scheduledAt,
-          ai_model_used: provider,
+          ai_model_used: ctx.provider,
           sns_target: slot.target,
           auto_post: true,
           slot_index: originalIndex,
@@ -196,61 +106,5 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("[GENERATE-BATCH]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// --- Helpers (same logic as cron/generate) ---
-function groupSlots(slots: ScheduleSlot[]) {
-  const map = new Map<string, { originalIndex: number; slot: ScheduleSlot }[]>();
-  slots.forEach((slot, i) => {
-    const hour = parseInt(slot.time.split(":")[0]);
-    const tod = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-    const key = `${slot.target}_${slot.style}_${slot.length}_${slot.split}_${slot.useTrend || false}_${tod}`;
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push({ originalIndex: i, slot });
-  });
-  return Array.from(map.entries()).map(([key, slots]) => ({ key, slots }));
-}
-
-async function generateBatch(provider: string, apiKey: string, systemPrompt: string, isSplit: boolean, postLength: PostLength, count: number): Promise<string[]> {
-  if (count === 1) {
-    const up = isSplit
-      ? "上記の理論体系に基づいて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。"
-      : "上記の理論体系に基づいて、SNS投稿を1つ生成してください。投稿テキストのみを出力。説明や前置きは不要。";
-    const mt = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
-    const raw = await callAI(provider, apiKey, systemPrompt, up, mt);
-    if (isSplit) { const p = parseSplitPost(raw); if (p) return [p.hook + "\n\n---\n\n" + p.reply]; }
-    // 非分割: --- を強制除去
-    return [raw.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim()];
-  }
-
-  const up = isSplit
-    ? `${count}つの分割投稿を生成。各投稿を ===POST_N=== で区切り、JSON形式 {"hook":"...","reply":"..."} で出力。`
-    : `${count}つのSNS投稿を生成。各投稿を ===POST_N=== で区切って出力。それぞれ異なる切り口で。投稿テキストのみ。`;
-
-  const mt = Math.min((isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300)) * count, 4000);
-  const raw = await callAI(provider, apiKey, systemPrompt, up, mt);
-
-  const results: string[] = [];
-  const parts = raw.split(/===POST_\d+===/).filter(p => p.trim());
-  for (const part of parts) {
-    const t = part.trim();
-    if (!t) continue;
-    if (isSplit) { const p = parseSplitPost(t); results.push(p ? p.hook + "\n\n---\n\n" + p.reply : t); }
-    else results.push(t.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim());
-  }
-  if (results.length === 0) {
-    if (isSplit) { const p = parseSplitPost(raw); if (p) return [p.hook + "\n\n---\n\n" + p.reply]; }
-    return [raw.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim()];
-  }
-  return results;
-}
-
-async function callAI(provider: string, apiKey: string, system: string, user: string, maxTokens: number) {
-  switch (provider) {
-    case "anthropic": return generateWithAnthropic(apiKey, system, user, undefined, maxTokens);
-    case "openai": return generateWithOpenAI(apiKey, system, user, undefined, maxTokens);
-    case "google": return generateWithGoogle(apiKey, system, user, undefined, maxTokens);
-    default: throw new Error("Unknown provider: " + provider);
   }
 }

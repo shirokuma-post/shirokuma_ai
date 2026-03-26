@@ -2,48 +2,39 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Receiver } from "@upstash/qstash";
 import {
+  fetchUserGenerationContext,
+  fetchTrendContext,
+  getTimeOfDay,
+  buildFullSystemPrompt,
+  callAI,
+  parseGeneratedContent,
   buildPrompt,
   buildSplitPrompt,
   parseSplitPost,
-  parseTitleAndPost,
-  generateWithAnthropic,
-  generateWithOpenAI,
-  generateWithGoogle,
   LENGTH_CONFIGS,
+  type ScheduleSlot,
   type PostLength,
   type SnsTarget,
-  type VoiceProfile,
-} from "@/lib/ai/generate-post";
-import type { PostStyle } from "@/types/database";
-import { buildLearningContext } from "@/lib/ai/learning-context";
+  type PostStyle,
+} from "@/lib/ai/generation-service";
 import { decrypt } from "@/lib/crypto";
 
 // ---------- Types ----------
-interface ScheduleSlot {
-  time: string;
-  target: SnsTarget;
-  style: string;
-  character?: string;  // 後方互換（未使用）
-  length: string;
-  split: boolean;
-}
-
 interface WorkerPayload {
   userId: string;
   slot?: ScheduleSlot;
   requireApproval?: boolean;
   trendEnabled?: boolean;
   trendCategories?: string[];
-  // post-draft mode: ドラフトを直接SNSに投稿
   mode?: "post-draft";
   draftPostId?: string;
 }
 
-// ---------- Service client (bypasses RLS) ----------
+// ---------- Service client ----------
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 }
 
@@ -51,21 +42,12 @@ function getServiceClient() {
 async function verifyQStashSignature(request: Request, body: string): Promise<boolean> {
   const signingKeys = process.env.QSTASH_CURRENT_SIGNING_KEY;
   const nextSigningKey = process.env.QSTASH_NEXT_SIGNING_KEY;
-
   if (!signingKeys || !nextSigningKey) return false;
 
   try {
-    const receiver = new Receiver({
-      currentSigningKey: signingKeys,
-      nextSigningKey: nextSigningKey,
-    });
-
+    const receiver = new Receiver({ currentSigningKey: signingKeys, nextSigningKey });
     const signature = request.headers.get("upstash-signature") || "";
-    const isValid = await receiver.verify({
-      signature,
-      body,
-    });
-    return isValid;
+    return await receiver.verify({ signature, body });
   } catch {
     return false;
   }
@@ -73,15 +55,12 @@ async function verifyQStashSignature(request: Request, body: string): Promise<bo
 
 // =============================================================
 // Worker: 1ユーザー × 1スロットの投稿処理
-// QStash または Dispatcher（/api/cron/post）から呼び出される
 // =============================================================
 export async function POST(request: Request) {
-  // リクエストボディを先に読む（署名検証に必要）
   const rawBody = await request.text();
 
-  // 認証: QStash 署名検証を優先、フォールバックで CRON_SECRET
+  // 認証
   const hasQStashSignature = request.headers.has("upstash-signature");
-
   if (hasQStashSignature) {
     const isValid = await verifyQStashSignature(request, rawBody);
     if (!isValid) {
@@ -89,7 +68,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid QStash signature" }, { status: 401 });
     }
   } else {
-    // フォールバック: CRON_SECRET（ローカル開発 / 直接呼び出し）
     const authHeader = request.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -105,7 +83,6 @@ export async function POST(request: Request) {
   }
 
   const { userId, slot, requireApproval, trendEnabled, trendCategories, mode, draftPostId } = payload;
-
   const supabase = getServiceClient();
 
   // ===== post-draft モード: 既存ドラフトをSNSに投稿 =====
@@ -115,7 +92,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, mode: "post-draft", draftPostId });
     } catch (err: any) {
       console.error(`[WORKER] post-draft error for ${draftPostId}:`, err.message);
-      // Mark draft as failed
       await supabase.from("posts").update({ status: "failed", error_message: err.message }).eq("id", draftPostId);
       return NextResponse.json({ error: err.message, draftPostId }, { status: 500 });
     }
@@ -131,143 +107,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, userId, time: slot.time, target: slot.target });
   } catch (err: any) {
     console.error(`[WORKER] Error for user ${userId} slot ${slot.time}:`, err.message);
-
     await supabase.from("schedule_executions").insert({
       user_id: userId,
       scheduled_time: slot.time,
       status: "failed",
       error_message: err.message,
     });
-
     return NextResponse.json({ error: err.message, userId, time: slot.time }, { status: 500 });
   }
 }
 
-// ---------- Process a single slot ----------
-async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, requireApproval?: boolean, trendEnabled?: boolean, trendCategories?: string[]) {
-  // 1. Get user's philosophy
-  const { data: philosophy } = await supabase
-    .from("philosophies")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("is_active", true)
-    .single();
+// ---------- スロット処理（生成 + SNS投稿） ----------
+async function processSlot(
+  supabase: any,
+  userId: string,
+  slot: ScheduleSlot,
+  requireApproval?: boolean,
+  trendEnabled?: boolean,
+  trendCategories?: string[],
+) {
+  // 共通コンテキスト一括取得
+  const ctx = await fetchUserGenerationContext(supabase, userId);
 
-  if (!philosophy) throw new Error("No active philosophy found");
-
-  // 2. Get AI API key
-  const { data: aiKeys } = await supabase
-    .from("api_keys")
-    .select("*")
-    .eq("user_id", userId)
-    .in("provider", ["anthropic", "openai", "google"]);
-
-  const aiKey = aiKeys?.[0];
-  if (!aiKey) throw new Error("No AI API key configured");
-
-  // 3. Determine time of day from slot time
-  const hour = parseInt(slot.time.split(":")[0]);
-  const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-
-  // 4. Slot settings
+  const timeOfDay = getTimeOfDay(slot.time);
   const style = (slot.style || "mix") as PostStyle;
   const postLength = (slot.length || "standard") as PostLength;
-  const provider = aiKey.provider;
-  const decryptedAiKey = decrypt(aiKey.encrypted_value);
+  const snsTarget = slot.target as SnsTarget;
+  const isSplit = snsTarget === "x" ? false : (slot.split || false);
+  const customStylePrompt = ctx.customStyleDefs.find((s) => s.id === style)?.prompt;
 
-  // 5. Get learning context
-  let learningContext = "";
-  try {
-    const { data: learningPosts } = await supabase
-      .from("learning_posts")
-      .select("*")
-      .eq("user_id", userId);
-    if (learningPosts?.length) {
-      learningContext = buildLearningContext(learningPosts);
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 5.5. Get trend context (if enabled, with category filter)
+  // トレンド
   let trendContext = "";
   if (trendEnabled) {
-    try {
-      const cats = trendCategories?.length ? trendCategories : ["general", "technology", "business"];
-      let query = supabase
-        .from("daily_trends")
-        .select("title, summary, category")
-        .order("fetched_at", { ascending: false })
-        .limit(10);
-      query = query.in("category", cats);
-      const { data: trends } = await query;
-      if (trends?.length) {
-        const trendList = trends.slice(0, 5).map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`).join("\n");
-        trendContext = `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${trendList}`;
-      }
-    } catch {
-      // Non-fatal
-    }
+    const cats = trendCategories?.length ? trendCategories : ["general", "technology", "business"];
+    trendContext = await fetchTrendContext(supabase, cats);
   }
 
-  // 6. Get recent posts for dedup
-  let recentPostContents: string[] = [];
-  try {
-    const { data: recentPosts } = await supabase
-      .from("posts")
-      .select("content")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(10);
-    if (recentPosts?.length) {
-      recentPostContents = recentPosts.map((p: any) => p.content);
-    }
-  } catch {
-    // Non-fatal
-  }
-
-  // 6.5. ボイスプロフィール・カスタムスタイルを取得
-  let voiceProfile: VoiceProfile | undefined;
-  let customStylePrompt: string | undefined;
-  try {
-    const { data: profileData } = await supabase.from("profiles").select("style_defaults").eq("id", userId).single();
-    if (profileData?.style_defaults) {
-      const sd = profileData.style_defaults as any;
-      if (sd.voiceProfile) voiceProfile = sd.voiceProfile as VoiceProfile;
-      if (sd.customStyles) {
-        const cs = sd.customStyles.find((s: any) => s.id === style);
-        if (cs) customStylePrompt = cs.prompt;
-      }
-    }
-  } catch {}
-
-  // 7. Generate
-  const snsTarget = slot.target;
-  const isSplit = snsTarget === "x" ? false : (slot.split || false);
-
+  // プロンプト生成
   const { system, user } = isSplit
-    ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
-    : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
+    ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt })
+    : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt });
 
-  const systemWithLearning = system
-    + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
-    + trendContext;
-  const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength as keyof typeof LENGTH_CONFIGS]?.maxTokens || 300);
+  const systemFull = buildFullSystemPrompt(system, style, ctx.learningContext, trendContext);
+  const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
 
-  let rawContent: string;
-  switch (provider) {
-    case "anthropic":
-      rawContent = await generateWithAnthropic(decryptedAiKey, systemWithLearning, user, undefined, maxTokens);
-      break;
-    case "openai":
-      rawContent = await generateWithOpenAI(decryptedAiKey, systemWithLearning, user, undefined, maxTokens);
-      break;
-    case "google":
-      rawContent = await generateWithGoogle(decryptedAiKey, systemWithLearning, user, undefined, maxTokens);
-      break;
-    default:
-      throw new Error("Unknown AI provider: " + provider);
-  }
+  // AI生成
+  const rawContent = await callAI(ctx.provider, ctx.decryptedKey, systemFull, user, maxTokens);
 
   let hookText = rawContent;
   let replyText: string | null = null;
@@ -281,7 +166,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
 
   const savedContent = replyText ? hookText + "\n\n---\n\n" + replyText : hookText;
 
-  // 8. 承認ワークフロー: require_approval なら SNS に投稿せず pending_approval で保存
+  // 承認ワークフロー
   if (requireApproval) {
     const { data: post } = await supabase
       .from("posts")
@@ -290,7 +175,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
         content: savedContent,
         style_used: style,
         status: "pending_approval",
-        ai_model_used: provider,
+        ai_model_used: ctx.provider,
       })
       .select()
       .single();
@@ -302,12 +187,11 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
       post_id: post?.id,
       sns_results: { approval_pending: true },
     });
-
     console.log(`[WORKER] Pending approval for user ${userId} at ${slot.time}`);
     return;
   }
 
-  // 9. Post to SNS
+  // SNS投稿
   const snsResults: Record<string, any> = {};
   try {
     if (snsTarget === "x") {
@@ -319,7 +203,7 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
     snsResults[snsTarget] = { error: err.message };
   }
 
-  // 10. Save post to DB
+  // DB保存
   const { data: post } = await supabase
     .from("posts")
     .insert({
@@ -329,12 +213,11 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
       status: "posted",
       posted_at: new Date().toISOString(),
       sns_post_ids: snsResults,
-      ai_model_used: provider,
+      ai_model_used: ctx.provider,
     })
     .select()
     .single();
 
-  // 11. Record execution
   await supabase.from("schedule_executions").insert({
     user_id: userId,
     scheduled_time: slot.time,
@@ -343,24 +226,15 @@ async function processSlot(supabase: any, userId: string, slot: ScheduleSlot, re
     sns_results: snsResults,
   });
 
-  // 12. Increment daily count
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("daily_post_count")
-    .eq("id", userId)
-    .single();
-
-  await supabase
-    .from("profiles")
-    .update({ daily_post_count: (profile?.daily_post_count || 0) + 1 })
-    .eq("id", userId);
+  // daily count
+  const { data: profile } = await supabase.from("profiles").select("daily_post_count").eq("id", userId).single();
+  await supabase.from("profiles").update({ daily_post_count: (profile?.daily_post_count || 0) + 1 }).eq("id", userId);
 
   console.log(`[WORKER] Posted for user ${userId} at ${slot.time} → ${snsTarget}`);
 }
 
-// ---------- Post draft to SNS ----------
+// ---------- ドラフトをSNSに投稿 ----------
 async function postDraft(supabase: any, postId: string, userId: string) {
-  // Fetch the draft
   const { data: draft, error } = await supabase
     .from("posts")
     .select("*")
@@ -375,14 +249,12 @@ async function postDraft(supabase: any, postId: string, userId: string) {
   const snsTarget = draft.sns_target || "x";
   const imageUrl = draft.image_url || null;
 
-  // Parse split content — slot_config.split が true の場合のみスレッド投稿
   const draftSlotCfg = draft.slot_config as any;
   const isSplitSlot = draftSlotCfg?.split === true;
   const parts = content.split("\n\n---\n\n");
   const hookText = isSplitSlot ? parts[0] : content.replace(/\n\n---\n\n/g, "\n\n");
   const replyText = isSplitSlot && parts.length > 1 ? parts[1] : null;
 
-  // Post to SNS (画像は本文投稿にのみ添付、リプライには付けない)
   const snsResults: Record<string, any> = {};
   try {
     if (snsTarget === "x") {
@@ -394,42 +266,27 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     snsResults[snsTarget] = { error: err.message };
   }
 
-  // Update post status
-  await supabase
-    .from("posts")
-    .update({
-      status: "posted",
-      posted_at: new Date().toISOString(),
-      sns_post_ids: snsResults,
-    })
-    .eq("id", postId);
+  await supabase.from("posts").update({
+    status: "posted",
+    posted_at: new Date().toISOString(),
+    sns_post_ids: snsResults,
+  }).eq("id", postId);
 
-  // Record execution
-  const slotConfig = draft.slot_config as any;
   await supabase.from("schedule_executions").insert({
     user_id: userId,
-    scheduled_time: slotConfig?.time || "00:00",
+    scheduled_time: (draft.slot_config as any)?.time || "00:00",
     status: "success",
     post_id: postId,
     sns_results: snsResults,
   });
 
-  // Increment daily count
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("daily_post_count")
-    .eq("id", userId)
-    .single();
-
-  await supabase
-    .from("profiles")
-    .update({ daily_post_count: (profile?.daily_post_count || 0) + 1 })
-    .eq("id", userId);
+  const { data: profile } = await supabase.from("profiles").select("daily_post_count").eq("id", userId).single();
+  await supabase.from("profiles").update({ daily_post_count: (profile?.daily_post_count || 0) + 1 }).eq("id", userId);
 
   console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
 }
 
-// ---------- SNS posting helper ----------
+// ---------- SNS投稿ヘルパー ----------
 async function postToSnsViaCron(
   supabase: any,
   userId: string,
@@ -480,7 +337,7 @@ async function postToSnsViaCron(
         ...(replyText ? { splitReply: replyText } : {}),
         ...(imageUrl ? { imageUrl } : {}),
       }),
-    }
+    },
   );
 
   return await postRes.json();

@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
-import { buildPrompt, buildSplitPrompt, parseSplitPost, parseTitleAndPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS, type VoiceProfile } from "@/lib/ai/generate-post";
-import { buildLearningContext } from "@/lib/ai/learning-context";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { decrypt } from "@/lib/crypto";
-import type { PostStyle } from "@/types/database";
-import type { PostLength, SnsTarget } from "@/lib/ai/generate-post";
+import {
+  fetchUserGenerationContext,
+  callAI,
+  buildFullSystemPrompt,
+  parseGeneratedContent,
+  buildPrompt,
+  buildSplitPrompt,
+  parseSplitPost,
+  LENGTH_CONFIGS,
+  type VoiceProfile,
+  type PostLength,
+  type SnsTarget,
+  type PostStyle,
+} from "@/lib/ai/generation-service";
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +25,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
     }
 
-    // 2. リクエストボディ（UIからの設定のみ）
+    // 2. リクエストボディ
     const body = await request.json();
     const {
       style = "mix",
@@ -32,117 +41,28 @@ export async function POST(request: Request) {
       voiceProfile?: VoiceProfile;
     };
 
-    // 3. ユーザーのマイコンセプトを取得
-    const { data: philosophy } = await supabase
-      .from("philosophies")
-      .select("*")
-      .eq("user_id", authUser.id)
-      .eq("is_active", true)
-      .single();
+    // 3. ユーザーの生成コンテキストを一括取得
+    const ctx = await fetchUserGenerationContext(supabase, authUser.id);
 
-    if (!philosophy) {
-      return NextResponse.json({ error: "マイコンセプトが設定されていません。設定画面から登録してください。" }, { status: 400 });
-    }
+    // リクエストのvoiceProfileを優先（UIの最新状態）
+    const voiceProfile = requestVoiceProfile || ctx.voiceProfile;
+    const customStylePrompt = ctx.customStyleDefs.find((s) => s.id === style)?.prompt;
 
-    // 4. AI APIキーを取得
-    const { data: aiKeys } = await supabase
-      .from("api_keys")
-      .select("*")
-      .eq("user_id", authUser.id)
-      .in("provider", ["anthropic", "openai", "google"]);
-
-    const aiKey = aiKeys?.[0];
-    if (!aiKey) {
-      return NextResponse.json({ error: "AI APIキーが設定されていません。設定ページから登録してください。" }, { status: 400 });
-    }
-
-    const aiProvider = aiKey.provider;
-    const decryptedKey = decrypt(aiKey.encrypted_value);
-
-    // 5. 時間帯を自動判定
-    const jstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-    const hour = jstNow.getHours();
-    const timeOfDay = hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
-
-    // 6. 学習データを取得
-    let learningContext = "";
-    try {
-      const { data: learningPosts } = await supabase
-        .from("learning_posts")
-        .select("content, ai_analysis")
-        .eq("user_id", authUser.id)
-        .order("created_at", { ascending: false });
-      if (learningPosts && learningPosts.length > 0) {
-        learningContext = buildLearningContext(learningPosts);
-      }
-    } catch (e) {
-      console.warn("Learning context fetch failed (non-fatal):", e);
-    }
-
-    // 7. 過去投稿を取得（重複回避用）
-    let recentPostContents: string[] = [];
-    try {
-      const { data: recentPosts } = await supabase
-        .from("posts")
-        .select("content")
-        .eq("user_id", authUser.id)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      if (recentPosts && recentPosts.length > 0) {
-        recentPostContents = recentPosts.map((p) => p.content);
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    // 7.5. ボイスプロフィールとカスタムスタイルを取得
-    let customStylePrompt: string | undefined;
-    // リクエストから送られたvoiceProfileを最優先で使用（UIの最新状態）
-    // DBはフォールバックのみ
-    let voiceProfile: VoiceProfile | undefined = requestVoiceProfile;
-    const { data: profile } = await supabase.from("profiles").select("style_defaults").eq("id", authUser.id).single();
-    if (profile?.style_defaults) {
-      const sd = profile.style_defaults as any;
-      if (sd.customStyles) {
-        const cs = sd.customStyles.find((s: any) => s.id === style);
-        if (cs) customStylePrompt = cs.prompt;
-      }
-      // リクエストにvoiceProfileがなければDBから取得（バッチ生成時など）
-      if (!voiceProfile && sd.voiceProfile) {
-        voiceProfile = sd.voiceProfile as VoiceProfile;
-      }
-    }
     console.log("[generate] voiceProfile source:", requestVoiceProfile ? "request" : "db", "dialect:", voiceProfile?.dialect, "customEndings:", voiceProfile?.customEndings);
 
-    // 8. プロンプト生成
-    // ai_optimized のときは learningContext をプロンプトビルダーに直接渡す（主軸として使う）
+    // 4. プロンプト生成
     const { system, user } = splitMode
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
+      ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay: getTimeOfDayNow(), voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt })
+      : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay: getTimeOfDayNow(), postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt });
 
-    // ai_optimized 以外は学習データを補助的に後付け
-    const systemWithLearning = system
-      + (style !== "ai_optimized" && learningContext ? "\n" + learningContext : "");
+    // 5. 学習データ補助付加
+    const systemFull = buildFullSystemPrompt(system, style, style !== "ai_optimized" ? ctx.learningContext : "", "");
 
-    // 8. AI生成
+    // 6. AI生成
     const maxTokens = splitMode ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
-    let rawContent: string;
+    const rawContent = await callAI(ctx.provider, ctx.decryptedKey, systemFull, user, maxTokens);
 
-    switch (aiProvider) {
-      case "anthropic":
-        rawContent = await generateWithAnthropic(decryptedKey, systemWithLearning, user, undefined, maxTokens);
-        break;
-      case "openai":
-        rawContent = await generateWithOpenAI(decryptedKey, systemWithLearning, user, undefined, maxTokens);
-        break;
-      case "google":
-        rawContent = await generateWithGoogle(decryptedKey, systemWithLearning, user, undefined, maxTokens);
-        break;
-      default:
-        return NextResponse.json({ error: "Unsupported AI provider: " + aiProvider }, { status: 400 });
-    }
-
-    // 9. レスポンス
+    // 7. レスポンス
     if (splitMode) {
       const splitResult = parseSplitPost(rawContent);
       if (!splitResult) {
@@ -154,24 +74,28 @@ export async function POST(request: Request) {
         splitMode: true,
         style,
         postLength: "split",
-        aiProvider,
+        aiProvider: ctx.provider,
         generatedAt: new Date().toISOString(),
       });
     }
 
-    // 非分割: タイトル+投稿をパース
-    const parsed = parseTitleAndPost(rawContent);
-
+    const parsed = parseGeneratedContent(rawContent, false);
     return NextResponse.json({
       content: parsed.post,
       internalTitle: parsed.title || undefined,
       style,
       postLength,
-      aiProvider,
+      aiProvider: ctx.provider,
       generatedAt: new Date().toISOString(),
     });
   } catch (error: any) {
     console.error("Generate error:", error);
     return NextResponse.json({ error: error.message || "生成に失敗しました" }, { status: 500 });
   }
+}
+
+function getTimeOfDayNow(): "morning" | "noon" | "night" {
+  const jstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+  const hour = jstNow.getHours();
+  return hour < 11 ? "morning" : hour < 17 ? "noon" : "night";
 }
