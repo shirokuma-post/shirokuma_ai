@@ -5,6 +5,7 @@ import {
   buildPrompt,
   buildSplitPrompt,
   parseSplitPost,
+  parseTitleAndPost,
   generateWithAnthropic,
   generateWithOpenAI,
   generateWithGoogle,
@@ -215,18 +216,20 @@ async function generateDraftsForUser(
     } catch {}
   }
 
-  // 5. Get recent posts for dedup
+  // 5. Get recent posts for dedup (タイトル優先、なければ書き出しのみ)
   let recentPostContents: string[] = [];
+  let recentPostTitles: string[] = [];
   try {
     const { data: recentPosts } = await supabase
       .from("posts")
-      .select("content")
+      .select("content, internal_title")
       .eq("user_id", userId)
       .in("status", ["posted", "draft"])
       .order("created_at", { ascending: false })
       .limit(10);
     if (recentPosts?.length) {
       recentPostContents = recentPosts.map((p: any) => p.content);
+      recentPostTitles = recentPosts.filter((p: any) => p.internal_title).map((p: any) => p.internal_title);
     }
   } catch {}
 
@@ -281,12 +284,16 @@ async function generateDraftsForUser(
       // Save each generated post as draft
       for (let ci = 0; ci < contents.length && ci < groupSlots.length; ci++) {
         const { originalIndex, slot } = groupSlots[ci];
-        const content = contents[ci];
+        const rawContent = contents[ci];
         const scheduledAt = `${todayStr}T${slot.time}:00+09:00`;
+
+        // タイトル+投稿テキストをパース（分割投稿はタイトルなし）
+        const parsed = isSplit ? { title: "", post: rawContent } : parseTitleAndPost(rawContent);
 
         const { data: post } = await supabase.from("posts").insert({
           user_id: userId,
-          content,
+          content: parsed.post,
+          internal_title: parsed.title || null,
           style_used: style === "mix" ? "mix" : style,
           status: "draft",
           scheduled_at: scheduledAt,

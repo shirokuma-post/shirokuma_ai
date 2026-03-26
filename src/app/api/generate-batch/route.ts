@@ -4,6 +4,7 @@ import {
   buildPrompt,
   buildSplitPrompt,
   parseSplitPost,
+  parseTitleAndPost,
   generateWithAnthropic,
   generateWithOpenAI,
   generateWithGoogle,
@@ -170,9 +171,13 @@ export async function POST(request: Request) {
         const { originalIndex, slot } = group.slots[ci];
         const scheduledAt = `${todayStr}T${slot.time}:00+09:00`;
 
+        // タイトル+投稿テキストをパース（分割投稿はタイトルなし）
+        const parsed = isSplit ? { title: "", post: contents[ci] } : parseTitleAndPost(contents[ci]);
+
         const { data: post } = await supabase.from("posts").insert({
           user_id: user.id,
-          content: contents[ci],
+          content: parsed.post,
+          internal_title: parsed.title || null,
           style_used: style,
           status: "draft",
           scheduled_at: scheduledAt,

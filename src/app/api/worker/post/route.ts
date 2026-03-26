@@ -5,6 +5,7 @@ import {
   buildPrompt,
   buildSplitPrompt,
   parseSplitPost,
+  parseTitleAndPost,
   generateWithAnthropic,
   generateWithOpenAI,
   generateWithGoogle,

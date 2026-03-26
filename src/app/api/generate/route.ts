@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildPrompt, buildSplitPrompt, parseSplitPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS, type VoiceProfile } from "@/lib/ai/generate-post";
+import { buildPrompt, buildSplitPrompt, parseSplitPost, parseTitleAndPost, generateWithAnthropic, generateWithOpenAI, generateWithGoogle, LENGTH_CONFIGS, type VoiceProfile } from "@/lib/ai/generate-post";
 import { buildLearningContext } from "@/lib/ai/learning-context";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
@@ -142,14 +142,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Unsupported AI provider: " + aiProvider }, { status: 400 });
     }
 
-    // 8.5. 非分割の場合、--- を強制除去 + 過剰改行を圧縮
-    if (!splitMode) {
-      rawContent = rawContent
-        .replace(/\n*---\n*/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")  // 3行以上の空行 → 1行空き
-        .trim();
-    }
-
     // 9. レスポンス
     if (splitMode) {
       const splitResult = parseSplitPost(rawContent);
@@ -167,8 +159,12 @@ export async function POST(request: Request) {
       });
     }
 
+    // 非分割: タイトル+投稿をパース
+    const parsed = parseTitleAndPost(rawContent);
+
     return NextResponse.json({
-      content: rawContent,
+      content: parsed.post,
+      internalTitle: parsed.title || undefined,
       style,
       postLength,
       aiProvider,

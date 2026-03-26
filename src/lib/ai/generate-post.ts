@@ -68,9 +68,9 @@ const TIME_TONES: Record<string, string> = {
 export type PostLength = "short" | "standard" | "long";
 
 export const LENGTH_CONFIGS: Record<PostLength, { label: string; description: string; prompt: string; maxTokens: number }> = {
-  short: { label: "短い", description: "60文字前後", prompt: "【文字数厳守】50〜70文字以内。これを超えるな。一文で刺す。", maxTokens: 500 },
-  standard: { label: "標準", description: "120〜140文字", prompt: "【文字数厳守】120〜140文字で書く。", maxTokens: 800 },
-  long: { label: "長い", description: "400〜500文字", prompt: "400〜500文字で書く。段落を分けて読みやすく。必ず最後まで書き切ること。", maxTokens: 2000 },
+  short: { label: "短い", description: "1〜2文", prompt: "短く。1〜2文で刺す。ツイート1つ分。", maxTokens: 150 },
+  standard: { label: "標準", description: "3〜5文", prompt: "3〜5文程度。読み切れる長さ。", maxTokens: 400 },
+  long: { label: "長い", description: "段落あり", prompt: "しっかり書く。段落を分けて読みやすく。最後まで書き切ること。", maxTokens: 1200 },
 };
 
 // =====================================================
@@ -161,12 +161,11 @@ export function buildVoicePrompt(vp: VoiceProfile): { basePrompt: string; voiceD
     parts.push("独身。自分の時間・生活が軸。");
   }
 
-  // 方言
+  // 方言（ここが唯一の方言指示。他の場所では方言に触れない）
   if (vp.dialect && vp.dialect !== "標準語") {
-    parts.push(`${vp.dialect}で書く。語尾・言い回しは自然な${vp.dialect}にする。標準語に直さないこと。`);
+    parts.push(`${vp.dialect}で書く。語尾・言い回しは自然な${vp.dialect}で統一する。`);
   } else {
-    // 標準語の場合、明示的に指示（カスタム語尾に引きずられないように）
-    parts.push("標準語で書く。方言は使わない。「〜へん」「〜やねん」「〜とる」などの方言表現は禁止。");
+    parts.push("標準語で書く。方言表現は使わない。");
   }
 
   // 年齢
@@ -212,16 +211,7 @@ export function buildVoicePrompt(vp: VoiceProfile): { basePrompt: string; voiceD
 
   // Business: カスタム語尾
   if (vp.customEndings?.trim()) {
-    const isStandard = !vp.dialect || vp.dialect === "標準語";
-    if (isStandard) {
-      parts.push(`【重要】文末の語尾だけ以下を使え: 「${vp.customEndings.trim()}」
-ただし語尾以外の文章は必ず標準語で書くこと。
-許可するのは文末の語尾だけ。文中の表現は全て標準語。
-具体的に禁止: 「〜やねん」「〜へん」「〜とる」「〜やった」「〜せや」「〜やん」「〜んや」など方言的な言い回しは語尾以外で絶対に使うな。
-「〜ない」を「〜へん」にするな。「〜している」を「〜しとる」にするな。「〜だった」を「〜やった」にするな。`);
-    } else {
-      parts.push(`語尾は「${vp.customEndings.trim()}」のような表現を使う。文末にこの語尾を自然に取り入れること。`);
-    }
+    parts.push(`語尾は「${vp.customEndings.trim()}」を自然に使う。文末にこの語尾を取り入れること。`);
   }
 
   // Business: 口癖
@@ -239,26 +229,12 @@ export function characterToVoiceProfile(character: string): VoiceProfile | null 
 }
 
 // =====================================================
-// AI臭い表現のブロックリスト（拡張版）
+// 文体ガイド（ポジティブ指示中心）
 // =====================================================
-// AIが使いがちな致命ワードだけに絞る（多すぎると逆効果）
-const BANNED_WORDS = [
-  "フレームワーク", "パラダイム", "メタ認知", "アプローチ", "ソリューション",
-  "シナジー", "イノベーション", "サステナブル",
-  "つまるところ", "換言すれば", "畢竟",
-];
-
-// =====================================================
-// AI臭さ防止（シンプル版）
-// =====================================================
-const ANTI_AI_RULES = `■ 禁止:
-「〜ではないでしょうか」「〜しましょう」「〜してみてください」禁止。カタカナビジネス用語禁止。ハッシュタグ禁止。きれいにまとまりすぎるな。
-「---」や「───」などの水平線・区切り線は絶対に使うな。投稿本文に含めてはいけない。
-
-■ 改行ルール:
-2〜3文をひとかたまりにして、段落の区切りで1回だけ改行しろ。
-1文ごとの改行は禁止。でも全く改行しないのも禁止。読みやすいリズムで段落を作れ。
-目安: 投稿全体で改行は2〜4回。`;
+const WRITING_GUIDE = `■ 文体:
+人間が書いたSNS投稿のように書く。話し言葉ベースで、完璧すぎない文章。
+ハッシュタグは付けない。区切り線（---等）は使わない。
+2〜3文をひとかたまりにして改行。改行は投稿全体で2〜4回。`;
 
 
 // SNSプラットフォーム別の特性
@@ -345,20 +321,23 @@ function getPhilosophyContext(philosophy: Philosophy): string {
 // =====================================================
 
 // =====================================================
-// 反復防止コンテキスト構築
+// 反復防止コンテキスト構築（トピック要約のみ、生テキスト非公開）
 // =====================================================
-function buildAntiRepetitionContext(recentPosts?: string[]): string {
+function buildAntiRepetitionContext(recentPosts?: string[], recentTitles?: string[]): string {
+  // タイトルがあればタイトルだけ使う（スタイルリーク防止）
+  if (recentTitles && recentTitles.length > 0) {
+    const titles = recentTitles.slice(0, 5);
+    return `\n■ 直近の投稿トピック（同じテーマを避けて新しい切り口で）:
+${titles.map((t, i) => `${i + 1}. ${t}`).join("\n")}
+書き出し・構造・トーンも毎回変えること。`;
+  }
+  // タイトルがない場合はトピックキーワードだけ抽出
   if (!recentPosts || recentPosts.length === 0) return "";
   const recent = recentPosts.slice(0, 5);
-  return `\n■ 【重要】直近の投稿（これらと似た構造・書き出し・パターンを絶対に避けろ）:
-${recent.map((p, i) => `${i + 1}. ${p.slice(0, 80)}${p.length > 80 ? "…" : ""}`).join("\n")}
-
-上記の投稿と以下の点で差をつけること:
-- 書き出しの言葉を変える（同じ一文字目から始めない）
-- 文の構造を変える（主語→述語の順序、体言止め、疑問形など）
-- トーンを変える（前回が攻撃的なら今回は静かに、等）
-
-【超重要】上記の過去投稿の「方言」「口調」「語尾」は絶対に真似するな。過去投稿が関西弁でも博多弁でも、今回の投稿はボイス設定で指定された方言・語尾のみを使え。過去投稿のスタイルに引きずられるな。`;
+  // 生テキストは渡さず、最初の20文字だけヒントとして使う
+  return `\n■ 直近の投稿の書き出し（同じ書き出し・同じテーマを避けること）:
+${recent.map((p, i) => `${i + 1}. 「${p.slice(0, 20)}…」`).join("\n")}
+毎回異なる切り口・構造・トーンで書くこと。`;
 }
 
 // =====================================================
@@ -380,13 +359,7 @@ interface GenerateOptions {
   customCharacterPrompt?: string;   // カスタムキャラのプロンプト（後方互換、無視される）
 }
 
-// 方言リマインダー（プロンプト末尾に配置して確実に守らせる）
-function buildDialectReminder(vp: VoiceProfile): string {
-  if (!vp.dialect || vp.dialect === "標準語") {
-    return `\n■ 【絶対厳守】標準語で書け。関西弁・博多弁・その他方言は一切禁止。「〜やん」「〜へん」「〜とる」「〜やねん」「〜やろ」「〜ねん」「〜やで」「〜んや」は全て禁止。文中も語尾も標準語のみ。`;
-  }
-  return `\n■ 【絶対厳守】${vp.dialect}で書け。他の方言は混ぜるな。`;
-}
+// 方言指示はbuildVoicePromptに統合済み。個別のリマインダーは不要。
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
   const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customBannedWords, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
@@ -406,7 +379,6 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
   const antiRepetition = buildAntiRepetitionContext(recentPosts);
-  const dialectReminder = buildDialectReminder(vp);
 
   const system = `${basePrompt}
 
@@ -420,15 +392,15 @@ ${philosophyContext}
 ■ トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-${ANTI_AI_RULES}
+${WRITING_GUIDE}
+
+■ 文字数: ${lengthConfig.prompt}
 ${antiRepetition}
-${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}
+${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
 
-■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。
-${dialectReminder}`;
-
-  const dialectUserHint = (!vp.dialect || vp.dialect === "標準語") ? "必ず標準語で。方言禁止。" : `${vp.dialect}で。`;
-  const user = `${lengthConfig.prompt} ${dialectUserHint} SNS投稿を1つ書いてください。投稿テキストのみ出力。`;
+  const user = `SNS投稿を1つ書いてください。以下のフォーマットで出力:
+[TITLE] この投稿のテーマを10文字以内で（例: 朝の習慣、完璧主義の罠）
+[POST] 投稿テキスト`;
   return { system, user };
 }
 
@@ -461,16 +433,18 @@ ${styleOptions}
 ■ トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
-${ANTI_AI_RULES}
-${antiRepetition}
+${WRITING_GUIDE}
 
-■ 【最重要】文字数: ${lengthConfig.prompt} この文字数を絶対に守れ。超えたら失格。書き切ってから止まれ。
-${buildDialectReminder(vp)}`;
+■ 文字数: ${lengthConfig.prompt}
+${antiRepetition}`;
 
-  const dialectUserHint = (!vp.dialect || vp.dialect === "標準語") ? "必ず標準語で。方言禁止。" : `${vp.dialect}で。`;
   const user = hasLearning
-    ? `${lengthConfig.prompt} ${dialectUserHint} 学習データの勝ちパターンを活用してSNS投稿を1つ。投稿テキストのみ出力。`
-    : `${lengthConfig.prompt} ${dialectUserHint} SNS投稿を1つ。投稿テキストのみ出力。`;
+    ? `学習データの勝ちパターンを活用してSNS投稿を1つ。以下のフォーマットで出力:
+[TITLE] テーマを10文字以内で
+[POST] 投稿テキスト`
+    : `SNS投稿を1つ。以下のフォーマットで出力:
+[TITLE] テーマを10文字以内で
+[POST] 投稿テキスト`;
   return { system, user };
 }
 
@@ -518,14 +492,32 @@ ${snsTarget ? `\n${SNS_CONTEXT[snsTarget]}` : ""}
 
 JSON形式のみ出力: {"hook": "...", "reply": "..."}
 
-${ANTI_AI_RULES}
+${WRITING_GUIDE}
 ${antiRepetition}
-${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}
-${buildDialectReminder(vp)}`;
+${customPrompt ? `\n■ カスタム指示: ${customPrompt}` : ""}`;
 
-  const dialectUserHint = (!vp.dialect || vp.dialect === "標準語") ? "必ず標準語で。方言禁止。" : `${vp.dialect}で。`;
-  const user = `${dialectUserHint} 上記をふまえて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。`;
+  const user = `上記をふまえて、分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。`;
   return { system, user };
+}
+
+// =====================================================
+// タイトル+投稿パーサー
+// =====================================================
+export function parseTitleAndPost(raw: string): { title: string; post: string } {
+  // [TITLE] xxx\n[POST] yyy 形式をパース
+  const titleMatch = raw.match(/\[TITLE\]\s*(.+)/);
+  const postMatch = raw.match(/\[POST\]\s*([\s\S]+)/);
+  if (titleMatch && postMatch) {
+    return {
+      title: titleMatch[1].trim().slice(0, 30),
+      post: postMatch[1].trim().replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim(),
+    };
+  }
+  // フォーマットに従わなかった場合: 全体を投稿として扱う
+  return {
+    title: "",
+    post: raw.replace(/\n*---\n*/g, "\n\n").replace(/\n{3,}/g, "\n\n").trim(),
+  };
 }
 
 // 過剰改行を圧縮するヘルパー
@@ -552,7 +544,7 @@ export function parseSplitPost(text: string): { hook: string; reply: string } | 
 }
 
 export async function generateWithAnthropic(apiKey: string, system: string, user: string, model = "claude-sonnet-4-5-20250929", maxTokens = 300): Promise<string> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }) });
+  const response = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.9, system, messages: [{ role: "user", content: user }] }) });
   if (!response.ok) { const error = await response.text(); throw new Error(`Anthropic API error: ${response.status} - ${error}`); }
   const data = await response.json(); return data.content[0].text.trim();
 }
