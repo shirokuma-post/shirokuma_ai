@@ -40,10 +40,13 @@ function getServiceClient() {
 // Batch Generator: 深夜一括生成 — 全ユーザー × 全スロットのドラフトを作成
 // vercel.json の cron で毎日深夜2時（JST）に実行される
 // =============================================================
-export async function GET(request: Request) {
+// GET: Vercel Cron / POST: QStash Schedules
+async function handler(request: Request) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // QStash署名 or CRON_SECRET で認証
+  const hasQStashSignature = request.headers.has("upstash-signature");
+  if (!hasQStashSignature && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -113,6 +116,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export { handler as GET, handler as POST };
 
 // ---------- Schedule QStash delayed posts ----------
 async function scheduleQStashPosts(

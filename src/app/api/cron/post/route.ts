@@ -16,10 +16,13 @@ function getServiceClient() {
 // 現在時刻に一致するスロットの draft を SNS に投稿する
 // auto_post = true のドラフトのみ対象
 // =============================================================
-export async function GET(request: Request) {
+// GET: Vercel Cron / POST: QStash Schedules
+async function handler(request: Request) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // QStash署名 or CRON_SECRET で認証
+  const hasQStashSignature = request.headers.has("upstash-signature");
+  if (!hasQStashSignature && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -126,3 +129,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export { handler as GET, handler as POST };
