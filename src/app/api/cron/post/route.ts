@@ -37,6 +37,19 @@ async function handler(request: Request) {
 
     console.log(`[CRON/POST] Running at JST ${currentTime} (${todayStr})`);
 
+    // 0. "posting" のまま1時間以上放置された投稿を "draft" に戻す（自動復旧）
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const { data: stuckPosts } = await supabase
+      .from("posts")
+      .update({ status: "draft", error_message: "posting状態タイムアウト — 自動復旧" })
+      .eq("status", "posting")
+      .lt("updated_at", oneHourAgo)
+      .eq("auto_post", true)
+      .select("id");
+    if (stuckPosts?.length) {
+      console.log(`[CRON/POST] Recovered ${stuckPosts.length} stuck posts: ${stuckPosts.map((p: any) => p.id).join(", ")}`);
+    }
+
     // 1. Get today's drafts that are due (auto_post = true)
     const { data: drafts, error: draftError } = await supabase
       .from("posts")
