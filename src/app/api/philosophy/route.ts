@@ -40,14 +40,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Title and content are required" }, { status: 400 });
   }
 
-  // 既存のアクティブなコンセプトを非アクティブに
-  await supabase
-    .from("philosophies")
-    .update({ is_active: false })
-    .eq("user_id", user.id)
-    .eq("is_active", true);
-
-  // 新規保存
+  // 新規保存（先にinsertして成功を確認してから旧レコードを無効化）
   const { data, error } = await supabase
     .from("philosophies")
     .insert({
@@ -62,6 +55,14 @@ export async function POST(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // insert成功後に旧アクティブを無効化（新レコード自身は除外）
+  await supabase
+    .from("philosophies")
+    .update({ is_active: false })
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .neq("id", data.id);
 
   return NextResponse.json({ philosophy: data });
 }

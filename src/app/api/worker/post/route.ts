@@ -18,6 +18,8 @@ import {
   type PostStyle,
 } from "@/lib/ai/generation-service";
 import { decrypt } from "@/lib/crypto";
+import { canPost, type PlanId } from "@/lib/plans";
+import { verifyCronSecret } from "@/lib/auth";
 
 // ---------- Types ----------
 interface WorkerPayload {
@@ -68,9 +70,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid QStash signature" }, { status: 401 });
     }
   } else {
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!verifyCronSecret(request.headers.get("authorization"))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
@@ -126,6 +126,14 @@ async function processSlot(
   trendEnabled?: boolean,
   trendCategories?: string[],
 ) {
+  // プラン上限チェック
+  const { data: profileForLimit } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
+  const plan = (profileForLimit?.plan || "free") as PlanId;
+  const dailyCount = profileForLimit?.daily_post_count || 0;
+  if (!canPost(plan, dailyCount)) {
+    throw new Error(`Daily post limit reached (plan=${plan}, count=${dailyCount})`);
+  }
+
   // 共通コンテキスト一括取得
   const ctx = await fetchUserGenerationContext(supabase, userId);
 
@@ -227,8 +235,7 @@ async function processSlot(
   });
 
   // daily count
-  const { data: profile } = await supabase.from("profiles").select("daily_post_count").eq("id", userId).single();
-  await supabase.from("profiles").update({ daily_post_count: (profile?.daily_post_count || 0) + 1 }).eq("id", userId);
+  await supabase.from("profiles").update({ daily_post_count: dailyCount + 1 }).eq("id", userId);
 
   console.log(`[WORKER] Posted for user ${userId} at ${slot.time} → ${snsTarget}`);
 }
@@ -239,11 +246,20 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     .from("posts")
     .select("*")
     .eq("id", postId)
-    .eq("status", "draft")
+    .in("status", ["draft", "posting"])
     .eq("auto_post", true)
     .single();
 
   if (error || !draft) throw new Error("Draft not found or auto_post disabled");
+
+  // プラン上限チェック
+  const { data: profile } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
+  const plan = (profile?.plan || "free") as PlanId;
+  const dailyCount = profile?.daily_post_count || 0;
+  if (!canPost(plan, dailyCount)) {
+    await supabase.from("posts").update({ status: "failed", error_message: "本日の投稿上限に達しました" }).eq("id", postId);
+    throw new Error(`Daily post limit reached (plan=${plan}, count=${dailyCount})`);
+  }
 
   const content = draft.content;
   const snsTarget = draft.sns_target || "x";
@@ -280,8 +296,7 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     sns_results: snsResults,
   });
 
-  const { data: profile } = await supabase.from("profiles").select("daily_post_count").eq("id", userId).single();
-  await supabase.from("profiles").update({ daily_post_count: (profile?.daily_post_count || 0) + 1 }).eq("id", userId);
+  await supabase.from("profiles").update({ daily_post_count: dailyCount + 1 }).eq("id", userId);
 
   console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
 }

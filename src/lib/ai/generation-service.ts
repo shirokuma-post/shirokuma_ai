@@ -85,7 +85,9 @@ export async function fetchUserGenerationContext(
       .select("content, ai_analysis")
       .eq("user_id", userId);
     if (lp?.length) learningContext = buildLearningContext(lp);
-  } catch {}
+  } catch (err) {
+    console.warn("[generation] Failed to fetch learning data:", err);
+  }
 
   // 4. 直近投稿（反復防止用）
   let recentPostContents: string[] = [];
@@ -104,7 +106,9 @@ export async function fetchUserGenerationContext(
         .filter((p: any) => p.internal_title)
         .map((p: any) => p.internal_title);
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[generation] Failed to fetch recent posts:", err);
+  }
 
   // 5. ボイスプロフィール・カスタムスタイル
   let voiceProfile: VoiceProfile | undefined;
@@ -120,7 +124,9 @@ export async function fetchUserGenerationContext(
       if (sd.voiceProfile) voiceProfile = sd.voiceProfile as VoiceProfile;
       if (sd.customStyles) customStyleDefs = sd.customStyles;
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[generation] Failed to fetch voice profile:", err);
+  }
 
   return {
     philosophy,
@@ -154,9 +160,11 @@ export async function fetchTrendContext(
         .slice(0, 5)
         .map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`)
         .join("\n");
-      return `\n\n■ 本日のトレンド（積極的に取り入れてください）:\n${list}`;
+      return `\n\n【参考】本日のトレンド（自然に関連する場合のみ取り入れる。無理に絡めない）:\n${list}`;
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[generation] Failed to fetch trends:", err);
+  }
   return "";
 }
 

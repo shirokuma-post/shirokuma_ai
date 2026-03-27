@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
+import { canPost, type PlanId } from "@/lib/plans";
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +25,21 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
       }
       authUserId = authUser.id;
+
+      // プラン上限チェック
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("plan, daily_post_count")
+        .eq("id", authUser.id)
+        .single();
+      const plan = (profile?.plan || "free") as PlanId;
+      const dailyCount = profile?.daily_post_count || 0;
+      if (!canPost(plan, dailyCount)) {
+        return NextResponse.json(
+          { error: "本日の投稿上限に達しました。プランをアップグレードするか、明日お試しください。" },
+          { status: 429 },
+        );
+      }
 
       if (provider === "x") {
         const { data: xKeys } = await supabase
@@ -104,6 +120,11 @@ export async function POST(request: Request) {
           sns_post_ids: { [provider]: resultData },
           error_message: isSuccess ? null : (resultData.error || null),
         });
+        // 投稿成功時にdaily_post_countをインクリメント
+        if (isSuccess) {
+          const { data: p } = await supabase.from("profiles").select("daily_post_count").eq("id", authUserId).single();
+          await supabase.from("profiles").update({ daily_post_count: (p?.daily_post_count || 0) + 1 }).eq("id", authUserId);
+        }
       } catch (dbErr) {
         console.warn("Post DB save failed (non-fatal):", dbErr);
       }
