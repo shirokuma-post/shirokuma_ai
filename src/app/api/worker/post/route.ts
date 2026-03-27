@@ -18,7 +18,7 @@ import {
   type PostStyle,
 } from "@/lib/ai/generation-service";
 import { decrypt } from "@/lib/crypto";
-import { canPost, type PlanId } from "@/lib/plans";
+import { canPost, getPostLimit, type PlanId } from "@/lib/plans";
 import { verifyCronSecret } from "@/lib/auth";
 
 // ---------- Types ----------
@@ -126,7 +126,8 @@ async function processSlot(
   trendEnabled?: boolean,
   trendCategories?: string[],
 ) {
-  // プラン上限チェック
+  // 日次リセット + プラン上限チェック
+  await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
   const { data: profileForLimit } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
   const plan = (profileForLimit?.plan || "free") as PlanId;
   const dailyCount = profileForLimit?.daily_post_count || 0;
@@ -234,8 +235,12 @@ async function processSlot(
     sns_results: snsResults,
   });
 
-  // daily count
-  await supabase.from("profiles").update({ daily_post_count: dailyCount + 1 }).eq("id", userId);
+  // daily count（アトミック更新）
+  const planLimit = getPostLimit(plan);
+  await supabase.rpc("increment_daily_post_count", {
+    p_user_id: userId,
+    p_plan_limit: planLimit,
+  });
 
   console.log(`[WORKER] Posted for user ${userId} at ${slot.time} → ${snsTarget}`);
 }
@@ -252,7 +257,8 @@ async function postDraft(supabase: any, postId: string, userId: string) {
 
   if (error || !draft) throw new Error("Draft not found or auto_post disabled");
 
-  // プラン上限チェック
+  // 日次リセット + プラン上限チェック
+  await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
   const { data: profile } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
   const plan = (profile?.plan || "free") as PlanId;
   const dailyCount = profile?.daily_post_count || 0;
@@ -296,7 +302,12 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     sns_results: snsResults,
   });
 
-  await supabase.from("profiles").update({ daily_post_count: dailyCount + 1 }).eq("id", userId);
+  // daily count（アトミック更新）
+  const planLimit = getPostLimit(plan);
+  await supabase.rpc("increment_daily_post_count", {
+    p_user_id: userId,
+    p_plan_limit: planLimit,
+  });
 
   console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
 }

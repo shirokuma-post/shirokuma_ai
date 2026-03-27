@@ -14,6 +14,7 @@ import {
   type SnsTarget,
   type PostStyle,
 } from "@/lib/ai/generation-service";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -23,6 +24,15 @@ export async function POST(request: Request) {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     if (!authUser) {
       return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
+    }
+
+    // レートリミット: 1分に10回まで（生成はBYOKなので投稿より緩め）
+    const rl = checkRateLimit(`generate:${authUser.id}`, 10, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "生成リクエストが多すぎます。少し待ってからお試しください。" },
+        { status: 429 },
+      );
     }
 
     // 2. リクエストボディ
