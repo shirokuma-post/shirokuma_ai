@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Client } from "@upstash/qstash";
 import { decrypt } from "@/lib/crypto";
+import { verifyCronSecret } from "@/lib/auth";
 
 // ---------- Service client (bypasses RLS) ----------
 function getServiceClient() {
@@ -18,11 +19,9 @@ function getServiceClient() {
 // =============================================================
 // GET: Vercel Cron / POST: QStash Schedules
 async function handler(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
   // QStash署名 or CRON_SECRET で認証
   const hasQStashSignature = request.headers.has("upstash-signature");
-  if (!hasQStashSignature && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!hasQStashSignature && !verifyCronSecret(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -69,7 +68,14 @@ async function handler(request: Request) {
 
     console.log(`[CRON/POST] Found ${dueDrafts.length} due drafts`);
 
-    // 3. QStash or direct — post each draft
+    // 3. Mark drafts as "posting" to prevent duplicate dispatch
+    const draftIds = dueDrafts.map((d: any) => d.id);
+    await supabase
+      .from("posts")
+      .update({ status: "posting" })
+      .in("id", draftIds);
+
+    // 4. QStash or direct — post each draft
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const workerUrl = `${appUrl}/api/worker/post`;
     const qstashToken = process.env.QSTASH_TOKEN;
@@ -97,7 +103,7 @@ async function handler(request: Request) {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${cronSecret}`,
+              Authorization: `Bearer ${process.env.CRON_SECRET}`,
             },
             body: JSON.stringify(payload),
             // @ts-ignore

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Client as QStashClient } from "@upstash/qstash";
+import { verifyCronSecret } from "@/lib/auth";
 import {
   fetchUserGenerationContext,
   fetchTrendContext,
@@ -29,10 +30,8 @@ function getServiceClient() {
 // GET: Vercel Cron / POST: QStash Schedules
 // =============================================================
 async function handler(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
   const hasQStashSignature = request.headers.has("upstash-signature");
-  if (!hasQStashSignature && cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!hasQStashSignature && !verifyCronSecret(request.headers.get("authorization"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -48,7 +48,17 @@ export async function POST(request: Request) {
     const voiceProfile = requestVoiceProfile || ctx.voiceProfile;
     const customStylePrompt = ctx.customStyleDefs.find((s) => s.id === style)?.prompt;
 
-    console.log("[generate] voiceProfile source:", requestVoiceProfile ? "request" : "db", "dialect:", voiceProfile?.dialect, "customEndings:", voiceProfile?.customEndings);
+    console.log("[generate] voiceProfile:", JSON.stringify({
+      source: requestVoiceProfile ? "request" : "db",
+      dialect: voiceProfile?.dialect,
+      gender: voiceProfile?.gender,
+      age: voiceProfile?.age,
+      distance: voiceProfile?.distance,
+      toxicity: voiceProfile?.toxicity,
+      elegance: voiceProfile?.elegance,
+      tension: voiceProfile?.tension,
+      emoji: voiceProfile?.emoji,
+    }));
 
     // 4. プロンプト生成
     const { system, user } = splitMode

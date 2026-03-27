@@ -5,7 +5,7 @@
 
 export type AiProvider = "anthropic" | "openai" | "google";
 export type SnsProvider = "x" | "threads";
-export type PostStatus = "draft" | "scheduled" | "posted" | "failed" | "pending_approval";
+export type PostStatus = "draft" | "scheduled" | "posted" | "failed" | "pending_approval" | "posting";
 export type PostStyle =
   | "paradigm_break"
   | "provocative"

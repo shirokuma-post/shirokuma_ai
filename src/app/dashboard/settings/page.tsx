@@ -219,7 +219,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style: postStyle, snsTarget: testSns }),
+        body: JSON.stringify({ style: postStyle, snsTarget: testSns, voiceProfile }),
       });
       const data = await res.json();
       if (!res.ok) { setTestResult("エラー: " + (data.error || "生成失敗")); }
