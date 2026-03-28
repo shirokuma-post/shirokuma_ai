@@ -34,12 +34,13 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { enabled, slots, require_approval, trend_enabled, trend_categories } = body as {
+    const { enabled, slots, require_approval, trend_enabled, trend_categories, local_area } = body as {
       enabled: boolean;
       slots: ScheduleSlot[];
       require_approval?: boolean;
       trend_enabled?: boolean;
       trend_categories?: string[];
+      local_area?: string;
     };
 
     // スロットを時間順にソート（例: 12:00, 08:00, 10:00 → 08:00, 10:00, 12:00）
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
         require_approval: require_approval ?? false,
         trend_enabled: trend_enabled ?? false,
         trend_categories: trend_categories ?? ["general", "technology", "business"],
+        local_area: local_area || null,
         slots: sortedSlots,
         timezone: "Asia/Tokyo",
         updated_at: new Date().toISOString(),

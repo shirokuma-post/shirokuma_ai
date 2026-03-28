@@ -164,13 +164,18 @@ export async function fetchUserGenerationContext(
 export async function fetchTrendContext(
   supabase: any,
   categories: string[],
+  userId?: string,
 ): Promise<string> {
+  const parts: string[] = [];
+
   try {
+    // グローバルトレンド
     const cats = categories.length > 0 ? categories : ["general", "technology", "business"];
     const { data: trends } = await supabase
       .from("daily_trends")
       .select("title, summary, category")
       .in("category", cats)
+      .is("user_id", null)
       .order("fetched_at", { ascending: false })
       .limit(10);
     if (trends?.length) {
@@ -178,12 +183,34 @@ export async function fetchTrendContext(
         .slice(0, 5)
         .map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`)
         .join("\n");
-      return `\n\n【参考】本日のトレンド（自然に関連する場合のみ取り入れる。無理に絡めない）:\n${list}`;
+      parts.push(`【参考】本日のトレンド（自然に関連する場合のみ取り入れる。無理に絡めない）:\n${list}`);
     }
   } catch (err) {
     console.warn("[generation] Failed to fetch trends:", err);
   }
-  return "";
+
+  // ローカルトレンド
+  if (userId) {
+    try {
+      const { data: localTrends } = await supabase
+        .from("daily_trends")
+        .select("title, summary")
+        .eq("category", "local")
+        .eq("user_id", userId)
+        .order("fetched_at", { ascending: false })
+        .limit(5);
+      if (localTrends?.length) {
+        const list = localTrends
+          .map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`)
+          .join("\n");
+        parts.push(`【地域の話題】（地元ネタとして自然に使える場合のみ。無理に絡めない）:\n${list}`);
+      }
+    } catch (err) {
+      console.warn("[generation] Failed to fetch local trends:", err);
+    }
+  }
+
+  return parts.length > 0 ? "\n\n" + parts.join("\n\n") : "";
 }
 
 // =====================================================

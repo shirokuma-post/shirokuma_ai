@@ -145,7 +145,7 @@ async function generateDraftsForUser(
 
   // トレンド（必要な場合のみ）
   const anySlotUsesTrend = slots.some((s) => s.useTrend === true);
-  const trendContext = anySlotUsesTrend ? await fetchTrendContext(supabase, trendCategories) : "";
+  const trendContext = anySlotUsesTrend ? await fetchTrendContext(supabase, trendCategories, userId) : "";
 
   // グループ化して一括生成
   const generatedPosts: { id: string; scheduledAt: string; userId: string }[] = [];

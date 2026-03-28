@@ -152,7 +152,7 @@ async function processSlot(
   let trendContext = "";
   if (trendEnabled) {
     const cats = trendCategories?.length ? trendCategories : ["general", "technology", "business"];
-    trendContext = await fetchTrendContext(supabase, cats);
+    trendContext = await fetchTrendContext(supabase, cats, userId);
   }
 
   // プロンプト生成

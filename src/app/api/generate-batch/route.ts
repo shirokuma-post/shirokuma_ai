@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     // トレンド（必要な場合のみ）
     const anySlotUsesTrend = futureSlots.some((s) => s.useTrend === true);
     const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
-    const trendContext = anySlotUsesTrend ? await fetchTrendContext(supabase, trendCategories) : "";
+    const trendContext = anySlotUsesTrend ? await fetchTrendContext(supabase, trendCategories, user.id) : "";
 
     // グループ化して一括生成（未来スロットのみ）
     const generated: any[] = [];

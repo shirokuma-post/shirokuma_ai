@@ -70,6 +70,7 @@ export default function SchedulePage() {
   const [requireApproval, setRequireApproval] = useState(false);
   const [trendEnabled, setTrendEnabled] = useState(false);
   const [trendCategories, setTrendCategories] = useState<string[]>(DEFAULT_TREND_CATEGORIES);
+  const [localArea, setLocalArea] = useState("");
   const [aiProvider, setAiProvider] = useState<"anthropic" | "openai" | "google">("anthropic");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [defaultSlot, setDefaultSlot] = useState<Slot>(INITIAL_DEFAULT_SLOT);
@@ -128,6 +129,7 @@ export default function SchedulePage() {
           setRequireApproval(data.config.require_approval ?? false);
           setTrendEnabled(data.config.trend_enabled ?? false);
           setTrendCategories(data.config.trend_categories ?? DEFAULT_TREND_CATEGORIES);
+          setLocalArea(data.config.local_area ?? "");
           // 新形式 (slots) を優先、なければ旧形式から変換
           if (data.config.slots && data.config.slots.length > 0) {
             setSlots(data.config.slots);
@@ -160,7 +162,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories }),
+        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories, local_area: localArea }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
@@ -474,6 +476,24 @@ export default function SchedulePage() {
                   })}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">最低1つは選択してください</p>
+              </div>
+            )}
+
+            {/* ローカルエリア設定 */}
+            {trendEnabled && planLevel(userPlan) >= 2 && (
+              <div className="pl-2 border-l-2 border-blue-200">
+                <p className="text-xs font-medium text-gray-600 mb-2">ローカルエリア（地域トレンド）</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={localArea}
+                    onChange={(e) => setLocalArea(e.target.value)}
+                    placeholder="例: 横浜、渋谷、福岡"
+                    className="w-48 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {localArea && <span className="text-xs text-blue-600">「{localArea}」の地域ニュースを取得します</span>}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">設定した地域のニュースを投稿ネタとして参照します（空欄でOFF）</p>
               </div>
             )}
 
