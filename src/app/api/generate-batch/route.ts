@@ -38,27 +38,49 @@ export async function POST(request: Request) {
     // 日付計算（JST）
     const jstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
     const todayStr = jstNow.toISOString().split("T")[0];
+    const nowIso = new Date().toISOString();
 
-    // 既存ドラフト削除
+    // 既存ドラフト削除（posting 状態も含む — 再生成時にQStash残骸を防ぐ）
+    // 未来スロットのみ削除（投稿済み・過去スロットは残す）
     await supabase
       .from("posts")
       .delete()
       .eq("user_id", user.id)
       .in("status", ["draft", "posting"])
-      .gte("scheduled_at", todayStr + "T00:00:00+09:00")
+      .gte("scheduled_at", nowIso)
       .lte("scheduled_at", todayStr + "T23:59:59+09:00");
+
+    // 残りスロットのみ抽出（現在時刻 - 10分以降のスロット）
+    const cutoffMinutes = (jstNow.getHours() * 60 + jstNow.getMinutes()) - 10;
+    const futureSlots = slots.filter((s) => {
+      const [h, m] = s.time.split(":").map(Number);
+      return h * 60 + m > cutoffMinutes;
+    });
+    const expiredSlots = slots.filter((s) => {
+      const [h, m] = s.time.split(":").map(Number);
+      return h * 60 + m <= cutoffMinutes;
+    });
+
+    if (futureSlots.length === 0) {
+      return NextResponse.json({
+        success: true,
+        generated: 0,
+        expiredCount: expiredSlots.length,
+        message: "今日の全スロットは投稿時間を過ぎています。",
+      });
+    }
 
     // ユーザーの生成コンテキストを一括取得
     const ctx = await fetchUserGenerationContext(supabase, user.id);
 
     // トレンド（必要な場合のみ）
-    const anySlotUsesTrend = slots.some((s) => s.useTrend === true);
+    const anySlotUsesTrend = futureSlots.some((s) => s.useTrend === true);
     const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
     const trendContext = anySlotUsesTrend ? await fetchTrendContext(supabase, trendCategories) : "";
 
-    // グループ化して一括生成
+    // グループ化して一括生成（未来スロットのみ）
     const generated: any[] = [];
-    const groups = groupSlots(slots);
+    const groups = groupSlots(futureSlots);
 
     for (const group of groups) {
       const refSlot = group.slots[0].slot;
@@ -95,7 +117,7 @@ export async function POST(request: Request) {
           scheduled_at: scheduledAt,
           ai_model_used: ctx.provider,
           sns_target: slot.target,
-          auto_post: true,
+          auto_post: false,
           slot_index: originalIndex,
           slot_config: slot,
         }).select().single();
@@ -104,11 +126,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // QStash遅延投稿をスケジュール（未来のスロットのみ）
-    // 過去のスロットはcron/postが次回実行時に拾う
-    const scheduled = await scheduleQStashPosts(generated, user.id);
+    // 手動再生成では auto_post: false のドラフトを作成するため、
+    // QStashスケジュールは行わない（登録は /api/posts/register 経由）
 
-    return NextResponse.json({ success: true, generated: generated.length, scheduled, posts: generated });
+    return NextResponse.json({
+      success: true,
+      generated: generated.length,
+      expiredCount: expiredSlots.length,
+      posts: generated,
+      needsRegistration: true,
+    });
   } catch (error: any) {
     console.error("[GENERATE-BATCH]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

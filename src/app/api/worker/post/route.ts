@@ -88,7 +88,10 @@ export async function POST(request: Request) {
   // ===== post-draft モード: 既存ドラフトをSNSに投稿 =====
   if (mode === "post-draft" && draftPostId) {
     try {
-      await postDraft(supabase, draftPostId, userId);
+      const result = await postDraft(supabase, draftPostId, userId);
+      if (result === "skipped") {
+        return NextResponse.json({ success: true, mode: "post-draft", draftPostId, skipped: true });
+      }
       return NextResponse.json({ success: true, mode: "post-draft", draftPostId });
     } catch (err: any) {
       console.error(`[WORKER] post-draft error for ${draftPostId}:`, err.message);
@@ -246,7 +249,7 @@ async function processSlot(
 }
 
 // ---------- ドラフトをSNSに投稿 ----------
-async function postDraft(supabase: any, postId: string, userId: string) {
+async function postDraft(supabase: any, postId: string, userId: string): Promise<"posted" | "skipped"> {
   const { data: draft, error } = await supabase
     .from("posts")
     .select("*")
@@ -255,7 +258,25 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     .eq("auto_post", true)
     .single();
 
-  if (error || !draft) throw new Error("Draft not found or auto_post disabled");
+  // 再生成でドラフトが削除された or auto_post OFF → 正常スキップ（QStash残骸）
+  if (error || !draft) {
+    console.log(`[WORKER] Skipping ${postId}: draft deleted or auto_post disabled (stale QStash job)`);
+    return "skipped";
+  }
+
+  // 時間ウィンドウガード: scheduled_at から ±15分以内のみ投稿
+  const scheduledMs = new Date(draft.scheduled_at).getTime();
+  const nowMs = Date.now();
+  const diffMinutes = (nowMs - scheduledMs) / 60_000;
+  if (diffMinutes > 15) {
+    console.log(`[WORKER] Skipping ${postId}: ${Math.round(diffMinutes)}min past scheduled time (${draft.scheduled_at})`);
+    await supabase.from("posts").update({
+      status: "failed",
+      error_message: `投稿時間を${Math.round(diffMinutes)}分超過（スキップ）`,
+    }).eq("id", postId);
+    return "skipped";
+  }
+
 
   // 日次リセット + プラン上限チェック
   await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
@@ -319,6 +340,7 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     });
 
     console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
+    return "posted";
   } else {
     const errorMsg = snsResults[snsTarget]?.error || "SNS投稿に失敗しました";
     await supabase.from("posts").update({
@@ -337,6 +359,7 @@ async function postDraft(supabase: any, postId: string, userId: string) {
     });
 
     console.error(`[WORKER] Failed draft ${postId} → ${snsTarget}: ${errorMsg}`);
+    return "skipped";
   }
 }
 

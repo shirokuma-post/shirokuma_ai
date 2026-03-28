@@ -89,6 +89,8 @@ export default function PostsPage() {
   const [editDraftText, setEditDraftText] = useState("");
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [togglingAutoPost, setTogglingAutoPost] = useState<string | null>(null);
+  const [registering, setRegistering] = useState(false);
+  const [needsRegistration, setNeedsRegistration] = useState(false);
 
   // 承認待ち (legacy support)
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
@@ -132,6 +134,9 @@ export default function PostsPage() {
         // Sort by slot_index
         drafts.sort((a: Post, b: Post) => (a.slot_index ?? 99) - (b.slot_index ?? 99));
         setTodayDrafts(drafts);
+        // 未登録ドラフトがあるか判定
+        const hasUnregistered = drafts.some((d: Post) => d.status === "draft" && !d.auto_post);
+        setNeedsRegistration(hasUnregistered);
       }
     } catch {}
   }, []);
@@ -183,7 +188,13 @@ export default function PostsPage() {
       const res = await fetch("/api/generate-batch", { method: "POST", headers: { "Content-Type": "application/json" } });
       const data = await res.json();
       if (res.ok) {
-        setPostResult(`${data.generated}件のドラフトを生成しました！`);
+        const expiredMsg = data.expiredCount > 0 ? `（時間外: ${data.expiredCount}件スキップ）` : "";
+        if (data.generated === 0 && data.expiredCount > 0) {
+          setPostResult(data.message || "今日の全スロットは投稿時間を過ぎています。");
+        } else {
+          setPostResult(`${data.generated}件のドラフトを生成しました！${expiredMsg} 内容を確認して「登録」してください。`);
+          setNeedsRegistration(true);
+        }
         await fetchTodayDrafts();
         await fetchPosts(1);
         fetchStats();
@@ -191,6 +202,22 @@ export default function PostsPage() {
         setPostResult("エラー: " + (data.error || "一括生成に失敗しました"));
       }
     } catch { setPostResult("エラー: 通信に失敗しました"); } finally { setBatchGenerating(false); }
+  }
+
+  // --- 登録（auto_post ON + QStashスケジュール） ---
+  async function handleRegister() {
+    setRegistering(true); setPostResult(null);
+    try {
+      const res = await fetch("/api/posts/register", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setPostResult(`${data.registered}件のドラフトを登録しました！自動投稿されます。`);
+        setNeedsRegistration(false);
+        fetchTodayDrafts();
+      } else {
+        setPostResult("エラー: " + (data.error || "登録に失敗しました"));
+      }
+    } catch { setPostResult("エラー: 通信に失敗しました"); } finally { setRegistering(false); }
   }
 
   // --- ドラフト操作 ---
@@ -365,19 +392,28 @@ export default function PostsPage() {
               <h2 className="font-semibold text-gray-900">今日のスロット</h2>
               {todayDrafts.length > 0 && <span className="text-xs px-2 py-0.5 bg-brand-50 text-brand-700 rounded-full">{todayDrafts.length}件</span>}
             </div>
-            <Button size="sm" onClick={handleBatchGenerate} disabled={batchGenerating}>
-              {batchGenerating ? (
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  生成中...
-                </span>
-              ) : todayDrafts.length > 0 ? "再一括生成" : "一括生成"}
-            </Button>
+            <div className="flex items-center gap-2">
+              {needsRegistration && (
+                <Button size="sm" onClick={handleRegister} disabled={registering} className="bg-green-600 hover:bg-green-700 text-white">
+                  {registering ? "登録中..." : "登録する"}
+                </Button>
+              )}
+              <Button size="sm" onClick={handleBatchGenerate} disabled={batchGenerating} variant={needsRegistration ? "ghost" : undefined}>
+                {batchGenerating ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    生成中...
+                  </span>
+                ) : todayDrafts.length > 0 ? "再生成" : "一括生成"}
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-gray-400 mt-1">
-            {todayDrafts.length > 0
-              ? "各スロットの内容を確認・編集できます。自動投稿スイッチで投稿の ON/OFF を制御。"
-              : "「一括生成」でスケジュール設定の全スロット分を一度に生成します。深夜2時に自動生成も動きます。"}
+            {needsRegistration
+              ? "内容を確認・編集して「登録する」を押すと自動投稿がスケジュールされます。"
+              : todayDrafts.length > 0
+                ? "各スロットの内容を確認・編集できます。自動投稿スイッチで投稿の ON/OFF を制御。"
+                : "「一括生成」でスケジュール設定の全スロット分を一度に生成します。深夜2時に自動生成も動きます。"}
           </p>
         </CardHeader>
         <CardContent>
@@ -397,22 +433,24 @@ export default function PostsPage() {
                 const slotConfig = draft.slot_config as any;
                 const styleLabel = STYLE_LABELS[draft.style_used] || draft.style_used;
                 const isSplitDraft = slotConfig?.split === true && draft.content.includes("\n\n---\n\n");
+                const isExpired = draft.scheduled_at ? new Date(draft.scheduled_at).getTime() < Date.now() - 10 * 60 * 1000 : false;
 
                 return (
-                  <div key={draft.id} className={"border rounded-lg overflow-hidden transition-colors " + (draft.auto_post ? "border-brand-200 bg-brand-50/30" : "border-gray-200 bg-gray-50/50")}>
+                  <div key={draft.id} className={"border rounded-lg overflow-hidden transition-colors " + (isExpired && draft.status === "draft" ? "border-gray-200 bg-gray-50 opacity-60" : draft.auto_post ? "border-brand-200 bg-brand-50/30" : "border-gray-200 bg-gray-50/50")}>
                     {/* Slot header */}
                     <div className="flex items-center justify-between px-4 py-3 bg-white/80">
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-mono font-bold text-gray-900">
+                        <span className={"text-sm font-mono font-bold " + (isExpired && draft.status === "draft" ? "text-gray-400 line-through" : "text-gray-900")}>
                           {draft.scheduled_at ? formatTime(draft.scheduled_at) : "--:--"}
                         </span>
+                        {isExpired && draft.status === "draft" && <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded">時間外</span>}
                         {getSnsLabel(draft.sns_target)}
                         <span className="text-xs text-gray-500">{styleLabel}</span>
                       </div>
                       <div className="flex items-center gap-3">
                         {/* Auto-post toggle */}
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">{draft.auto_post ? "自動投稿ON" : "自動投稿OFF"}</span>
+                          <span className={"text-xs " + (draft.auto_post ? "text-brand-600 font-medium" : "text-gray-400")}>{draft.auto_post ? "登録済み" : "未登録"}</span>
                           <button
                             onClick={() => handleToggleAutoPost(draft.id, draft.auto_post)}
                             disabled={isToggling}
