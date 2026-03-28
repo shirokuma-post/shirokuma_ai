@@ -31,6 +31,7 @@ export interface ScheduleSlot {
   length: string;
   split: boolean;
   useTrend?: boolean;
+  theme?: string;
 }
 
 export interface SlotGroup {

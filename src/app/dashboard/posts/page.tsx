@@ -11,9 +11,9 @@ type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
 type SnsTarget = "x" | "threads";
 
-const STYLE_LABELS: Record<string, string> = { kizuki: "気づき", toi: "問い", honne: "本音", yorisoi: "寄り添い", osusowake: "おすそわけ", monogatari: "物語", uragawa: "裏側", yoin: "余韻", mix: "おまかせ", ai_optimized: "AI最適化", paradigm_break: "気づき", provocative: "問い", flip: "裏側", poison_story: "余韻", boyaki: "本音", yueki: "おすそわけ", jitsuwa: "物語", kyoukan: "寄り添い" };
+const STYLE_LABELS: Record<string, string> = { kizuki: "気づき", toi: "問い", honne: "本音", yorisoi: "寄り添い", osusowake: "おすそわけ", monogatari: "物語", uragawa: "裏側", yoin: "余韻", hitokoto: "ひとこと", mix: "おまかせ", ai_optimized: "AI最適化", paradigm_break: "気づき", provocative: "問い", flip: "裏側", poison_story: "余韻", boyaki: "本音", yueki: "おすそわけ", jitsuwa: "物語", kyoukan: "寄り添い" };
 const STYLE_OPTIONS = [
-  { id: "mix", name: "おまかせ", desc: "8スタイルからランダム" },
+  { id: "mix", name: "おまかせ", desc: "9スタイルからランダム" },
   { id: "kizuki", name: "気づき", desc: "ふと気づいたことがある" },
   { id: "toi", name: "問い", desc: "これってどうなんだろう" },
   { id: "honne", name: "本音", desc: "正直に言うとさ" },
@@ -22,13 +22,16 @@ const STYLE_OPTIONS = [
   { id: "monogatari", name: "物語", desc: "こんなことがあってさ" },
   { id: "uragawa", name: "裏側", desc: "実はこうなんだよ" },
   { id: "yoin", name: "余韻", desc: "…って、ふと思った" },
+  { id: "hitokoto", name: "ひとこと", desc: "ふと漏れた一言" },
   { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
 ];
 const LENGTH_OPTIONS_X: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
   { id: "short", label: "短い", desc: "60文字前後", minPlan: "pro" },
   { id: "standard", label: "標準", desc: "120〜140文字", minPlan: "free" },
+  { id: "long", label: "長い", desc: "400〜500文字", minPlan: "business" },
 ];
 const LENGTH_OPTIONS_THREADS: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
+  { id: "short", label: "短い", desc: "60文字前後", minPlan: "business" },
   { id: "standard", label: "標準", desc: "120〜140文字", minPlan: "free" },
   { id: "long", label: "長い", desc: "400〜500文字", minPlan: "pro" },
 ];

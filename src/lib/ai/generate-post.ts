@@ -58,14 +58,23 @@ const STYLE_PROMPTS: Record<PostStyle, string> = {
 読んだ後に少し考え込む。そういう投稿。
 オチをつけすぎない。余白を残す。`,
 
-  mix: "上記8スタイルからランダムに選んで投稿。",
+  hitokoto: `【ひとこと】— 「ふと漏れた一言」
+1〜2行の短いつぶやき。説明しない。展開しない。
+ふと思ったこと、感じたこと、疑問をそのまま出す。
+「読書って、知識のためというより現実からの一時避難。」
+「○○ができるとこどこ〜〜？ 誰か教えて！」
+こういう温度感。考えすぎない。
+日常の断片、素朴な疑問、ぽろっと出た本音。
+オチも結論もいらない。その瞬間を切り取るだけ。`,
+
+  mix: "上記9スタイルからランダムに選んで投稿。",
   ai_optimized: "AI最適化スタイル: 過去に伸びた投稿の学習データを分析し、最もエンゲージメントが高いスタイル・構造・フックを自動選択して投稿を生成する。",
 };
 
 // ランダムスタイル候補（mix用）
 const RANDOM_STYLES: PostStyle[] = [
   "kizuki", "toi", "honne", "yorisoi",
-  "osusowake", "monogatari", "uragawa", "yoin",
+  "osusowake", "monogatari", "uragawa", "yoin", "hitokoto",
 ];
 
 const TIME_TONES: Record<string, string> = {

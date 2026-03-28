@@ -15,6 +15,7 @@ export type PostStyle =
   | "monogatari"
   | "uragawa"
   | "yoin"
+  | "hitokoto"
   | "mix"
   | "ai_optimized";
 export type PlanType = "free" | "pro" | "business";
@@ -88,6 +89,7 @@ export interface ScheduleSlot {
   character: string;
   length: string;
   split: boolean;
+  theme?: string;
 }
 
 export interface ScheduleConfig {

@@ -592,6 +592,7 @@ export default function SettingsPage() {
                       { id: "monogatari", name: "物語", desc: "こんなことがあってさ" },
                       { id: "uragawa", name: "裏側", desc: "実はこうなんだよ" },
                       { id: "yoin", name: "余韻", desc: "…って、ふと思った" },
+                      { id: "hitokoto", name: "ひとこと", desc: "ふと漏れた一言" },
                       { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
                       ...customStyles.map(cs => ({ id: cs.id, name: cs.name, desc: cs.desc })),
                     ].map((s) => (
