@@ -30,6 +30,7 @@ export default function LearningPage() {
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
   const [content, setContent] = useState("");
+  const [platform, setPlatform] = useState<"x" | "threads">("x");
   const [likes, setLikes] = useState("");
   const [impressions, setImpressions] = useState("");
   const [saving, setSaving] = useState(false);
@@ -38,6 +39,8 @@ export default function LearningPage() {
   const [sourceType, setSourceType] = useState<"own" | "others">("own");
   const [sourceAccount, setSourceAccount] = useState("");
   const [activeTab, setActiveTab] = useState<"own" | "others">("own");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -65,7 +68,7 @@ export default function LearningPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content,
-          platform: "x",
+          platform,
           metrics,
           sourceType,
           ...(sourceType === "others" && sourceAccount ? { sourceAccount } : {}),
@@ -88,6 +91,38 @@ export default function LearningPage() {
     catch (e) { console.error(e); } finally { setDeleting(null); }
   }
 
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`${selectedIds.size}件の学習データを削除しますか？`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/learning-posts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        fetchAll();
+      }
+    } catch (e) { console.error(e); }
+    finally { setBulkDeleting(false); }
+  }
+
+  function toggleSelect(id: string) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filteredPosts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredPosts.map(p => p.id)));
+    }
+  }
+
   function formatDate(d: string) { return new Date(d).toLocaleDateString("ja-JP", { month: "short", day: "numeric" }); }
 
   const isPaid = userPlan !== "free";
@@ -105,6 +140,16 @@ export default function LearningPage() {
         <h1 className="text-2xl font-bold text-gray-900">Learning</h1>
         <p className="text-gray-500 mt-1">伸びた投稿を登録して、AIの生成精度を上げる</p>
       </div>
+
+      {/* AI最適化のみ反映の案内 */}
+      {isPaid && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+          <p className="text-sm text-blue-700">
+            <span className="font-medium">ℹ️ </span>
+            学習データは<span className="font-bold">「AI最適化」スタイル</span>選択時のみ生成に反映されます。他のスタイル（ぼやき・共感など）は固定の型で安定した出力を行います。
+          </p>
+        </div>
+      )}
 
       {!isPaid ? (
         <Card>
@@ -156,7 +201,26 @@ export default function LearningPage() {
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
                 />
 
-                <div className="flex gap-3 flex-wrap">
+                <div className="flex gap-3 flex-wrap items-end">
+                  {/* プラットフォーム選択 */}
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">プラットフォーム</label>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setPlatform("x")}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${platform === "x" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      >
+                        X
+                      </button>
+                      <button
+                        onClick={() => setPlatform("threads")}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${platform === "threads" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      >
+                        Threads
+                      </button>
+                    </div>
+                  </div>
+
                   {sourceType === "others" && (
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">出典アカウント（任意）</label>
@@ -192,13 +256,13 @@ export default function LearningPage() {
                   {isBusiness && (
                     <div className="flex gap-1">
                       <button
-                        onClick={() => setActiveTab("own")}
+                        onClick={() => { setActiveTab("own"); setSelectedIds(new Set()); }}
                         className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${activeTab === "own" ? "bg-brand-100 text-brand-700" : "text-gray-400 hover:text-gray-600"}`}
                       >
                         自分 ({ownPosts.length})
                       </button>
                       <button
-                        onClick={() => setActiveTab("others")}
+                        onClick={() => { setActiveTab("others"); setSelectedIds(new Set()); }}
                         className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${activeTab === "others" ? "bg-purple-100 text-purple-700" : "text-gray-400 hover:text-gray-600"}`}
                       >
                         他者 ({othersPosts.length})
@@ -207,7 +271,18 @@ export default function LearningPage() {
                   )}
                   {!isBusiness && <span className="text-sm text-gray-400">({total}件)</span>}
                 </div>
-                <button onClick={fetchAll} className="text-xs text-brand-600 hover:text-brand-700">更新</button>
+                <div className="flex items-center gap-2">
+                  {selectedIds.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={bulkDeleting}
+                      className="px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
+                    >
+                      {bulkDeleting ? "削除中..." : `${selectedIds.size}件を削除`}
+                    </button>
+                  )}
+                  <button onClick={fetchAll} className="text-xs text-brand-600 hover:text-brand-700">更新</button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -218,10 +293,30 @@ export default function LearningPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* 全選択 */}
+                  <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === filteredPosts.length && filteredPosts.length > 0}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="text-xs text-gray-500">すべて選択</span>
+                  </div>
+
                   {filteredPosts.map((post) => (
-                    <div key={post.id} className={`border rounded-lg p-4 ${post.source_type === "others" ? "border-purple-100" : "border-gray-100"}`}>
+                    <div key={post.id} className={`border rounded-lg p-4 ${selectedIds.has(post.id) ? "border-brand-300 bg-brand-50/30" : post.source_type === "others" ? "border-purple-100" : "border-gray-100"}`}>
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(post.id)}
+                            onChange={() => toggleSelect(post.id)}
+                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 mt-0.5"
+                          />
+                          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+                            {post.platform === "threads" ? "Threads" : "X"}
+                          </span>
                           {post.source_type === "others" && (
                             <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
                               他者{post.source_account ? ` ${post.source_account}` : ""}
@@ -233,9 +328,9 @@ export default function LearningPage() {
                         </div>
                         <button onClick={() => handleDelete(post.id)} disabled={deleting === post.id} className="text-xs text-gray-300 hover:text-red-500">{deleting === post.id ? "..." : "✕"}</button>
                       </div>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3 line-clamp-4">{post.content}</p>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3 line-clamp-4 ml-6">{post.content}</p>
                       {post.ai_analysis && (
-                        <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                        <div className="bg-gray-50 rounded-lg p-3 space-y-1 ml-6">
                           <p className="text-xs font-medium text-gray-600 mb-1">AI分析</p>
                           {post.ai_analysis.structure && <p className="text-xs text-gray-500"><span className="text-gray-700">構造:</span> {post.ai_analysis.structure}</p>}
                           {post.ai_analysis.hook_type && <p className="text-xs text-gray-500"><span className="text-gray-700">フック:</span> {post.ai_analysis.hook_type}</p>}

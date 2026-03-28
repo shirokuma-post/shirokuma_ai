@@ -89,16 +89,17 @@ export async function fetchUserGenerationContext(
 
     const { data: lp } = await supabase
       .from("learning_posts")
-      .select("content, ai_analysis, source_type, source_account")
+      .select("content, platform, ai_analysis, source_type, source_account")
       .eq("user_id", userId);
 
     if (lp?.length && userPlan !== "free") {
       // Free: 学習データ全て除外
       // Pro: 自分の投稿のみ
       // Business: 自分＋他者
-      const filtered = userPlan === "business"
+      let filtered = userPlan === "business"
         ? lp
         : lp.filter((p: any) => p.source_type !== "others");
+      // ※ プラットフォーム別フィルタは buildLearningContext 側で適用
       if (filtered.length) learningContext = buildLearningContext(filtered);
     }
   } catch (err) {
@@ -218,7 +219,7 @@ export function buildFullSystemPrompt(
 ): string {
   return (
     baseSystem
-    + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
+    + (style === "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
     + trendContext
   );
 }

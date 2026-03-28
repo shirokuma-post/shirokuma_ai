@@ -79,14 +79,23 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE
+// DELETE (単体 or 一括)
 export async function DELETE(request: Request) {
   try {
     const supabase = createServerSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id } = await request.json();
+    const body = await request.json();
+    const { id, ids } = body;
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // 一括削除
+      const { error } = await supabase.from("learning_posts").delete().in("id", ids).eq("user_id", user.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, deleted: ids.length });
+    }
+
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const { error } = await supabase.from("learning_posts").delete().eq("id", id).eq("user_id", user.id);
