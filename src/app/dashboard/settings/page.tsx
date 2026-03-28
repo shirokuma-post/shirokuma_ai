@@ -583,15 +583,16 @@ export default function SettingsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">スタイル</label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { id: "mix", name: "ミックス", desc: "8スタイルからランダム" },
-                      { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
-                      { id: "provocative", name: "問いかけ", desc: "一緒に考えようという問い" },
-                      { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
-                      { id: "poison_story", name: "ストーリー", desc: "短い物語にオチがある" },
-                      { id: "boyaki", name: "ぼやき", desc: "ふと思った独り言" },
-                      { id: "yueki", name: "有益", desc: "使えるTips・ノウハウ" },
-                      { id: "jitsuwa", name: "実体験風", desc: "リアルな体験エピソード" },
-                      { id: "kyoukan", name: "共感", desc: "「わかる」を代弁する" },
+                      { id: "mix", name: "おまかせ", desc: "8スタイルからランダム" },
+                      { id: "kizuki", name: "気づき", desc: "ふと気づいたことがある" },
+                      { id: "toi", name: "問い", desc: "これってどうなんだろう" },
+                      { id: "honne", name: "本音", desc: "正直に言うとさ" },
+                      { id: "yorisoi", name: "寄り添い", desc: "わかるよ、その気持ち" },
+                      { id: "osusowake", name: "おすそわけ", desc: "いいこと知ったから教えるね" },
+                      { id: "monogatari", name: "物語", desc: "こんなことがあってさ" },
+                      { id: "uragawa", name: "裏側", desc: "実はこうなんだよ" },
+                      { id: "yoin", name: "余韻", desc: "…って、ふと思った" },
+                      { id: "hitokoto", name: "ひとこと", desc: "ふと漏れた一言" },
                       { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
                       ...customStyles.map(cs => ({ id: cs.id, name: cs.name, desc: cs.desc })),
                     ].map((s) => (

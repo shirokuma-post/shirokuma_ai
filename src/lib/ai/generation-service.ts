@@ -31,6 +31,7 @@ export interface ScheduleSlot {
   length: string;
   split: boolean;
   useTrend?: boolean;
+  theme?: string;
 }
 
 export interface SlotGroup {
@@ -77,19 +78,36 @@ export async function fetchUserGenerationContext(
   const provider = aiKey.provider;
   const decryptedKey = decrypt(aiKey.encrypted_value);
 
-  // 3. 学習データ
+  // 3. 学習データ（他者投稿はBusinessプランのみ）
   let learningContext = "";
   try {
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", userId)
+      .single();
+    const userPlan = userProfile?.plan || "free";
+
     const { data: lp } = await supabase
       .from("learning_posts")
-      .select("content, ai_analysis")
+      .select("content, platform, ai_analysis, source_type, source_account")
       .eq("user_id", userId);
-    if (lp?.length) learningContext = buildLearningContext(lp);
+
+    if (lp?.length && userPlan !== "free") {
+      // Free: 学習データ全て除外
+      // Pro: 自分の投稿のみ
+      // Business: 自分＋他者
+      let filtered = userPlan === "business"
+        ? lp
+        : lp.filter((p: any) => p.source_type !== "others");
+      // ※ プラットフォーム別フィルタは buildLearningContext 側で適用
+      if (filtered.length) learningContext = buildLearningContext(filtered);
+    }
   } catch (err) {
     console.warn("[generation] Failed to fetch learning data:", err);
   }
 
-  // 4. 直近投稿（反復防止用）
+  // 4. 直近投稿（反復防止用）— posted のみ（draft含めるとバッチ内で干渉する）
   let recentPostContents: string[] = [];
   let recentPostTitles: string[] = [];
   try {
@@ -97,7 +115,7 @@ export async function fetchUserGenerationContext(
       .from("posts")
       .select("content, internal_title")
       .eq("user_id", userId)
-      .in("status", ["posted", "draft"])
+      .eq("status", "posted")
       .order("created_at", { ascending: false })
       .limit(10);
     if (rp?.length) {
@@ -202,7 +220,7 @@ export function buildFullSystemPrompt(
 ): string {
   return (
     baseSystem
-    + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
+    + (style === "ai_optimized" && learningContext ? "\n\n" + learningContext : "")
     + trendContext
   );
 }
@@ -240,33 +258,41 @@ export async function generateBatch(
   postLength: PostLength,
   count: number,
 ): Promise<string[]> {
-  if (count === 1) {
-    const userPrompt = isSplit
-      ? "分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。"
-      : "SNS投稿を1つ生成してください。投稿テキストのみを出力。";
-    const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
-    const raw = await callAI(provider, apiKey, systemPrompt, userPrompt, maxTokens);
+  // 最大3つずつに分割してAPIコール（品質安定化）
+  const MAX_PER_CALL = 3;
+  const allResults: string[] = [];
 
-    if (isSplit) {
-      const parsed = parseSplitPost(raw);
-      if (parsed) return [parsed.hook + "\n\n---\n\n" + parsed.reply];
-      return [raw];
+  for (let i = 0; i < count; i += MAX_PER_CALL) {
+    const batchCount = Math.min(MAX_PER_CALL, count - i);
+
+    if (batchCount === 1) {
+      const userPrompt = isSplit
+        ? "分割投稿（フック＋リプライ）を生成してください。JSON形式のみで出力。"
+        : "SNS投稿を1つ生成してください。投稿テキストのみを出力。";
+      const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
+      const raw = await callAI(provider, apiKey, systemPrompt, userPrompt, maxTokens);
+
+      if (isSplit) {
+        const parsed = parseSplitPost(raw);
+        allResults.push(parsed ? parsed.hook + "\n\n---\n\n" + parsed.reply : raw);
+      } else {
+        allResults.push(raw);
+      }
+    } else {
+      const userPrompt = isSplit
+        ? `${batchCount}つの分割投稿を生成。各投稿を ===POST_N=== で区切り、JSON形式 {"hook":"...","reply":"..."} で出力。`
+        : `${batchCount}つのSNS投稿を生成。各投稿を ===POST_N=== で区切って出力。それぞれ異なる切り口で。投稿テキストのみ。`;
+
+      const maxTokens = Math.min(
+        (isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300)) * batchCount,
+        4000,
+      );
+      const raw = await callAI(provider, apiKey, systemPrompt, userPrompt, maxTokens);
+      allResults.push(...parseBatchOutput(raw, isSplit));
     }
-    return [raw];
   }
 
-  // 複数投稿 — バッチプロンプト
-  const userPrompt = isSplit
-    ? `${count}つの分割投稿を生成。各投稿を ===POST_N=== で区切り、JSON形式 {"hook":"...","reply":"..."} で出力。`
-    : `${count}つのSNS投稿を生成。各投稿を ===POST_N=== で区切って出力。それぞれ異なる切り口で。投稿テキストのみ。`;
-
-  const maxTokens = Math.min(
-    (isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300)) * count,
-    4000,
-  );
-  const raw = await callAI(provider, apiKey, systemPrompt, userPrompt, maxTokens);
-
-  return parseBatchOutput(raw, isSplit);
+  return allResults;
 }
 
 function parseBatchOutput(raw: string, isSplit: boolean): string[] {

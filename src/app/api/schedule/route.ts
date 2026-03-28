@@ -4,10 +4,12 @@ import { createServerSupabase } from "@/lib/supabase/server";
 export interface ScheduleSlot {
   time: string;       // "09:00"
   target: "x" | "threads";
-  style: string;      // "mix" | "paradigm_break" | etc.
+  style: string;      // "mix" | "kizuki" | "hitokoto" | etc.
   character: string;  // "none" | "gal" | etc.
   length: string;     // "short" | "standard" | "long"
   split: boolean;
+  useTrend?: boolean;
+  theme?: string;
 }
 
 export async function GET() {
@@ -40,6 +42,11 @@ export async function POST(request: Request) {
       trend_categories?: string[];
     };
 
+    // スロットを時間順にソート（例: 12:00, 08:00, 10:00 → 08:00, 10:00, 12:00）
+    const sortedSlots = [...(slots || [])].sort((a: ScheduleSlot, b: ScheduleSlot) =>
+      a.time.localeCompare(b.time)
+    );
+
     const { data, error } = await supabase
       .from("schedule_configs")
       .upsert({
@@ -48,7 +55,7 @@ export async function POST(request: Request) {
         require_approval: require_approval ?? false,
         trend_enabled: trend_enabled ?? false,
         trend_categories: trend_categories ?? ["general", "technology", "business"],
-        slots: slots || [],
+        slots: sortedSlots,
         timezone: "Asia/Tokyo",
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" })

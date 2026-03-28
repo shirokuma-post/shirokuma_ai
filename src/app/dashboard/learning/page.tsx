@@ -17,6 +17,8 @@ type LearningPost = {
     key_technique?: string;
     why_it_works?: string;
   } | null;
+  source_type: "own" | "others";
+  source_account?: string;
   created_at: string;
 };
 
@@ -28,11 +30,17 @@ export default function LearningPage() {
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
   const [content, setContent] = useState("");
+  const [platform, setPlatform] = useState<"x" | "threads">("x");
   const [likes, setLikes] = useState("");
   const [impressions, setImpressions] = useState("");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [sourceType, setSourceType] = useState<"own" | "others">("own");
+  const [sourceAccount, setSourceAccount] = useState("");
+  const [activeTab, setActiveTab] = useState<"own" | "others">("own");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -58,12 +66,18 @@ export default function LearningPage() {
       const res = await fetch("/api/learning-posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content, platform: "x", metrics }),
+        body: JSON.stringify({
+          content,
+          platform,
+          metrics,
+          sourceType,
+          ...(sourceType === "others" && sourceAccount ? { sourceAccount } : {}),
+        }),
       });
       const data = await res.json();
       if (res.ok) {
         setResult("登録しました！");
-        setContent(""); setLikes(""); setImpressions("");
+        setContent(""); setLikes(""); setImpressions(""); setSourceAccount("");
         fetchAll();
       } else { setResult("エラー: " + (data.error || "登録に失敗")); }
     } catch (e) { setResult("エラー: 通信に失敗しました"); }
@@ -77,9 +91,46 @@ export default function LearningPage() {
     catch (e) { console.error(e); } finally { setDeleting(null); }
   }
 
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`${selectedIds.size}件の学習データを削除しますか？`)) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/learning-posts", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (res.ok) {
+        setSelectedIds(new Set());
+        fetchAll();
+      }
+    } catch (e) { console.error(e); }
+    finally { setBulkDeleting(false); }
+  }
+
+  function toggleSelect(id: string) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelectedIds(next);
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filteredPosts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredPosts.map(p => p.id)));
+    }
+  }
+
   function formatDate(d: string) { return new Date(d).toLocaleDateString("ja-JP", { month: "short", day: "numeric" }); }
 
   const isPaid = userPlan !== "free";
+  const isBusiness = userPlan === "business";
+
+  const ownPosts = posts.filter(p => p.source_type !== "others");
+  const othersPosts = posts.filter(p => p.source_type === "others");
+  const filteredPosts = activeTab === "own" ? ownPosts : othersPosts;
 
   if (loading) return <div className="text-center py-12"><p className="text-gray-400">読み込み中...</p></div>;
 
@@ -89,6 +140,16 @@ export default function LearningPage() {
         <h1 className="text-2xl font-bold text-gray-900">Learning</h1>
         <p className="text-gray-500 mt-1">伸びた投稿を登録して、AIの生成精度を上げる</p>
       </div>
+
+      {/* AI最適化のみ反映の案内 */}
+      {isPaid && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+          <p className="text-sm text-blue-700">
+            <span className="font-medium">ℹ️ </span>
+            学習データは<span className="font-bold">「AI最適化」スタイル</span>選択時のみ生成に反映されます。他のスタイル（ぼやき・共感など）は固定の型で安定した出力を行います。
+          </p>
+        </div>
+      )}
 
       {!isPaid ? (
         <Card>
@@ -109,14 +170,63 @@ export default function LearningPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                {/* 投稿タイプ選択 */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSourceType("own")}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${sourceType === "own" ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                  >
+                    自分の投稿
+                  </button>
+                  <button
+                    onClick={() => setSourceType("others")}
+                    disabled={!isBusiness}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${sourceType === "others" ? "bg-purple-600 text-white" : isBusiness ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-gray-50 text-gray-300 cursor-not-allowed"}`}
+                  >
+                    他者のバズ投稿 {!isBusiness && "🔒"}
+                  </button>
+                </div>
+
+                {sourceType === "others" && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <p className="text-xs text-purple-700">他者の投稿は「構造」と「テクニック」のみ学習します。あなたのマイコンセプトに沿った形で水平思考的に応用されます。</p>
+                  </div>
+                )}
+
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="伸びた投稿をここに貼り付け..."
+                  placeholder={sourceType === "own" ? "自分の伸びた投稿をここに貼り付け..." : "参考にしたいバズ投稿をここに貼り付け..."}
                   rows={5}
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
                 />
-                <div className="flex gap-3">
+
+                <div className="flex gap-3 flex-wrap items-end">
+                  {/* プラットフォーム選択 */}
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">プラットフォーム</label>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setPlatform("x")}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${platform === "x" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      >
+                        X
+                      </button>
+                      <button
+                        onClick={() => setPlatform("threads")}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${platform === "threads" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                      >
+                        Threads
+                      </button>
+                    </div>
+                  </div>
+
+                  {sourceType === "others" && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">出典アカウント（任意）</label>
+                      <input type="text" value={sourceAccount} onChange={(e) => setSourceAccount(e.target.value)} placeholder="例: @example" className="w-40 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">いいね数（任意）</label>
                     <input type="number" value={likes} onChange={(e) => setLikes(e.target.value)} placeholder="例: 150" className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
@@ -141,31 +251,86 @@ export default function LearningPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-900">登録済み<span className="ml-2 text-sm font-normal text-gray-400">({total}件)</span></h2>
-                <button onClick={fetchAll} className="text-xs text-brand-600 hover:text-brand-700">更新</button>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-semibold text-gray-900">登録済み</h2>
+                  {isBusiness && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => { setActiveTab("own"); setSelectedIds(new Set()); }}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${activeTab === "own" ? "bg-brand-100 text-brand-700" : "text-gray-400 hover:text-gray-600"}`}
+                      >
+                        自分 ({ownPosts.length})
+                      </button>
+                      <button
+                        onClick={() => { setActiveTab("others"); setSelectedIds(new Set()); }}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${activeTab === "others" ? "bg-purple-100 text-purple-700" : "text-gray-400 hover:text-gray-600"}`}
+                      >
+                        他者 ({othersPosts.length})
+                      </button>
+                    </div>
+                  )}
+                  {!isBusiness && <span className="text-sm text-gray-400">({total}件)</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedIds.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={bulkDeleting}
+                      className="px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100"
+                    >
+                      {bulkDeleting ? "削除中..." : `${selectedIds.size}件を削除`}
+                    </button>
+                  )}
+                  <button onClick={fetchAll} className="text-xs text-brand-600 hover:text-brand-700">更新</button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              {posts.length === 0 ? (
+              {filteredPosts.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <p className="text-sm">まだ学習データはありません</p>
                   <p className="text-xs mt-1">伸びた投稿を登録して、AIの生成精度を高めましょう</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {posts.map((post) => (
-                    <div key={post.id} className="border border-gray-100 rounded-lg p-4">
+                  {/* 全選択 */}
+                  <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === filteredPosts.length && filteredPosts.length > 0}
+                      onChange={toggleSelectAll}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="text-xs text-gray-500">すべて選択</span>
+                  </div>
+
+                  {filteredPosts.map((post) => (
+                    <div key={post.id} className={`border rounded-lg p-4 ${selectedIds.has(post.id) ? "border-brand-300 bg-brand-50/30" : post.source_type === "others" ? "border-purple-100" : "border-gray-100"}`}>
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(post.id)}
+                            onChange={() => toggleSelect(post.id)}
+                            className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 mt-0.5"
+                          />
+                          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+                            {post.platform === "threads" ? "Threads" : "X"}
+                          </span>
+                          {post.source_type === "others" && (
+                            <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
+                              他者{post.source_account ? ` ${post.source_account}` : ""}
+                            </span>
+                          )}
                           {post.metrics?.likes && <span className="text-xs text-pink-600 bg-pink-50 px-2 py-0.5 rounded-full">♥ {post.metrics.likes}</span>}
                           {post.metrics?.impressions && <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">👁 {post.metrics.impressions.toLocaleString()}</span>}
                           <span className="text-xs text-gray-400">{formatDate(post.created_at)}</span>
                         </div>
                         <button onClick={() => handleDelete(post.id)} disabled={deleting === post.id} className="text-xs text-gray-300 hover:text-red-500">{deleting === post.id ? "..." : "✕"}</button>
                       </div>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3 line-clamp-4">{post.content}</p>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3 line-clamp-4 ml-6">{post.content}</p>
                       {post.ai_analysis && (
-                        <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+                        <div className="bg-gray-50 rounded-lg p-3 space-y-1 ml-6">
                           <p className="text-xs font-medium text-gray-600 mb-1">AI分析</p>
                           {post.ai_analysis.structure && <p className="text-xs text-gray-500"><span className="text-gray-700">構造:</span> {post.ai_analysis.structure}</p>}
                           {post.ai_analysis.hook_type && <p className="text-xs text-gray-500"><span className="text-gray-700">フック:</span> {post.ai_analysis.hook_type}</p>}

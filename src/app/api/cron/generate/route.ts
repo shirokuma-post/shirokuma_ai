@@ -112,7 +112,7 @@ async function scheduleQStashPosts(
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const workerUrl = `${appUrl}/api/worker/post`;
-  const qstash = new QStashClient({ token: qstashToken });
+  const qstash = new QStashClient({ token: qstashToken, baseUrl: process.env.QSTASH_URL || "https://qstash-us-east-1.upstash.io" });
 
   for (const { id, scheduledAt } of postIds) {
     try {
@@ -164,11 +164,12 @@ async function generateDraftsForUser(
 
     try {
       const { system } = isSplit
-        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt })
-        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt });
+        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt })
+        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt });
 
       const slotUsesTrend = refSlot.useTrend === true;
-      const systemFull = buildFullSystemPrompt(system, style, ctx.learningContext, slotUsesTrend ? trendContext : "");
+      const themeContext = refSlot.theme ? `\n\n【テーマ指定】今回の投稿テーマ: 「${refSlot.theme}」\nこのテーマに沿った内容を生成してください。ただし無理にテーマを押し出さず、自然な投稿に仕上げること。` : "";
+      const systemFull = buildFullSystemPrompt(system, style, ctx.learningContext, slotUsesTrend ? trendContext : "") + themeContext;
 
       const contents = await generateBatch(ctx.provider, ctx.decryptedKey, systemFull, isSplit, postLength, count);
 

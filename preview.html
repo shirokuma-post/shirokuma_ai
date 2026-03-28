@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHIROKUMA Post - Preview</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50: "#f0f7ff",
+          100: "#e0effe",
+          200: "#bae0fd",
+          300: "#7cc8fb",
+          400: "#36adf6",
+          500: "#0c93e7",
+          600: "#0074c5",
+          700: "#015da0",
+          800: "#064f84",
+          900: "#0b426e",
+          950: "#072a49",
+        },
+      },
+      fontFamily: {
+        sans: ['"Noto Sans JP"', '"Inter"', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+}
+</script>
+<style>
+  .page { display: none; }
+  .page.active { display: block; }
+  .nav-tab { cursor: pointer; padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  .nav-tab.active { background: #0074c5; color: white; }
+  .nav-tab:not(.active) { background: #f3f4f6; color: #374151; }
+</style>
+</head>
+<body class="font-sans">
+
+<!-- Page Switcher -->
+<div style="position:sticky;top:0;z-index:50;background:#fff;border-bottom:2px solid #0074c5;padding:12px 24px;display:flex;gap:8px;align-items:center;">
+  <span style="font-size:12px;color:#6b7280;margin-right:8px;">PREVIEW:</span>
+  <button class="nav-tab active" onclick="showPage('top')">/ トップ</button>
+  <button class="nav-tab" onclick="showPage('tokushoho')">/tokushoho 特商法</button>
+  <button class="nav-tab" onclick="showPage('privacy')">/privacy プライバシー</button>
+</div>
+
+<!-- ==================== TOP PAGE ==================== -->
+<div id="page-top" class="page active">
+<div class="min-h-screen bg-white">
+  <header class="border-b border-gray-100">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">S</div>
+        <span class="font-bold text-gray-900">SHIROKUMA</span>
+        <span class="text-brand-600 font-medium">Post</span>
+      </div>
+      <a href="#" class="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors">Login</a>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-6">
+    <section class="py-24 text-center">
+      <div class="w-80 h-44 bg-brand-50 rounded-2xl mx-auto mb-8 flex items-center justify-center text-brand-400 text-sm">[shirokuma-hero.png]</div>
+      <h1 class="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight">
+        「60点でいいから続けろ」って言うけど、<br>
+        <span class="text-brand-600">その60点が作れないんだよ。</span>
+      </h1>
+      <p class="text-lg md:text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+        SHIROKUMA Postは、あなたのコンセプトから<br>
+        毎日60点の投稿を自動で作り続ける。<br>
+        だから、渾身の120点を打ちたいときに、いつでも打てる。
+      </p>
+      <a href="#" class="inline-flex px-8 py-4 bg-brand-600 text-white rounded-xl text-lg font-semibold hover:bg-brand-700 transition-colors shadow-lg shadow-brand-600/25">
+        始めてみる
+      </a>
+    </section>
+
+    <section class="py-16 grid md:grid-cols-3 gap-8">
+      <div class="p-6 rounded-2xl border border-gray-200 hover:border-brand-200 hover:shadow-md transition-all">
+        <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">コンセプトが核になる</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">あなたの信念・価値観・世界観を登録。すべての投稿がコンセプトから生まれるから、テンプレ感ゼロ。</p>
+      </div>
+      <div class="p-6 rounded-2xl border border-gray-200 hover:border-brand-200 hover:shadow-md transition-all">
+        <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">60点を自動で作り続ける</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">11種類のスタイルと10軸のキャラ設定で『あなたらしい投稿』を毎日自動生成。発信が途切れない。</p>
+      </div>
+      <div class="p-6 rounded-2xl border border-gray-200 hover:border-brand-200 hover:shadow-md transition-all">
+        <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">120点をいつでも打てる</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">土台が途切れてないから、本気で伝えたいときにすぐ届く。バズ狙いじゃない。辞めない仕組み。</p>
+      </div>
+    </section>
+
+    <section class="py-16 text-center">
+      <div class="bg-gray-900 text-white rounded-2xl p-10 max-w-3xl mx-auto">
+        <h2 class="text-2xl font-bold mb-4">BYOK = Bring Your Own Key</h2>
+        <p class="text-gray-300 leading-relaxed">
+          あなた自身のAPIキー（Claude / GPT / Gemini / X / Threads）で動作。<br>
+          AI費用は従量課金で使った分だけ。コストが完全に透明。<br>
+          キーはAES-256で暗号化保存。いつでも削除・変更可能。
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-gray-100 py-8 text-center text-sm text-gray-400">
+    <p class="mb-2">SHIROKUMA Post &mdash; S.S.M (shirokuma sustainable marketing)</p>
+    <div class="flex items-center justify-center gap-4">
+      <a href="#" onclick="showPage('tokushoho');return false" class="hover:text-gray-600 transition-colors">特定商取引法に基づく表記</a>
+      <a href="#" onclick="showPage('privacy');return false" class="hover:text-gray-600 transition-colors">プライバシーポリシー</a>
+    </div>
+  </footer>
+</div>
+</div>
+
+<!-- ==================== TOKUSHOHO PAGE ==================== -->
+<div id="page-tokushoho" class="page">
+<div class="min-h-screen bg-white">
+  <header class="border-b border-gray-100">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">S</div>
+        <span class="font-bold text-gray-900">SHIROKUMA</span>
+        <span class="text-brand-600 font-medium">Post</span>
+      </div>
+      <a href="#" onclick="showPage('top');return false" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">← トップに戻る</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-16">
+    <h1 class="text-3xl font-bold text-gray-900 mb-10">特定商取引法に基づく表記</h1>
+    <dl class="divide-y divide-gray-200">
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">販売事業者</dt><dd class="text-sm text-gray-600 leading-relaxed">S.S.M (shirokuma sustainable marketing)</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">運営統括責任者</dt><dd class="text-sm text-gray-600 leading-relaxed">辻 千晴</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">所在地</dt><dd class="text-sm text-gray-600 leading-relaxed">請求があった場合、遅滞なく開示いたします</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">電話番号</dt><dd class="text-sm text-gray-600 leading-relaxed">請求があった場合、遅滞なく開示いたします</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">メールアドレス</dt><dd class="text-sm text-gray-600 leading-relaxed">shirokuma@shirokuma-sensei.com</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">販売URL</dt><dd class="text-sm text-gray-600 leading-relaxed">https://shirokumapos.vercel.app</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">販売価格</dt><dd class="text-sm text-gray-600 leading-relaxed">Free: ¥0/月、Pro: ¥980/月（税込）、Business: ¥2,980/月（税込）</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">販売価格の補足</dt><dd class="text-sm text-gray-600 leading-relaxed">※ 上記はツール利用料。AI API利用料（従量課金）は各AIプロバイダーに直接支払い。X APIは初回$5チャージのみ（月額ではない）</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">販売価格以外の必要料金</dt><dd class="text-sm text-gray-600 leading-relaxed">AI API利用料（従量課金）、X API利用料（初回$5チャージ）、インターネット接続料金</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">支払方法</dt><dd class="text-sm text-gray-600 leading-relaxed">クレジットカード（Stripe経由）</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">支払時期</dt><dd class="text-sm text-gray-600 leading-relaxed">申込時に初回決済、以降毎月同日に自動決済</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">商品の引渡時期</dt><dd class="text-sm text-gray-600 leading-relaxed">決済完了後、直ちにサービス利用可能</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">返品・キャンセル</dt><dd class="text-sm text-gray-600 leading-relaxed">デジタルサービスのため返金不可。サブスクリプションはいつでもキャンセル可能（次回更新日まで利用可）。アプリ内設定から操作</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">動作環境</dt><dd class="text-sm text-gray-600 leading-relaxed">モダンブラウザ最新版、インターネット接続環境</dd></div>
+      <div class="py-4 sm:flex sm:gap-4"><dt class="text-sm font-semibold text-gray-900 sm:w-48 sm:shrink-0 mb-1 sm:mb-0">特記事項</dt><dd class="text-sm text-gray-600 leading-relaxed">BYOK方式。APIキーはユーザー自身で用意。利用料はツール料金に含まれない</dd></div>
+    </dl>
+    <div class="mt-10 text-xs text-gray-400 space-y-1">
+      <p>※ 個人事業主のため、住所・電話番号は請求に応じて開示いたします（特定商取引法第11条ただし書き）。</p>
+      <p>※ 記載内容は予告なく変更する場合があります。</p>
+    </div>
+  </main>
+
+  <footer class="border-t border-gray-100 py-8 text-center text-sm text-gray-400">
+    <p>S.S.M (shirokuma sustainable marketing)</p>
+  </footer>
+</div>
+</div>
+
+<!-- ==================== PRIVACY PAGE ==================== -->
+<div id="page-privacy" class="page">
+<div class="min-h-screen bg-white">
+  <header class="border-b border-gray-100">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">S</div>
+        <span class="font-bold text-gray-900">SHIROKUMA</span>
+        <span class="text-brand-600 font-medium">Post</span>
+      </div>
+      <a href="#" onclick="showPage('top');return false" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">← トップに戻る</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-16">
+    <h1 class="text-3xl font-bold text-gray-900 mb-10">プライバシーポリシー</h1>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">1. 収集する情報</h2>
+      <h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">1-1. アカウント情報</h3>
+      <p class="text-sm text-gray-600 leading-relaxed">メールアドレス、表示名、アバター画像URL</p>
+      <h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">1-2. APIキー情報</h3>
+      <p class="text-sm text-gray-600 leading-relaxed mb-3">AI APIキー（Anthropic / OpenAI / Google）、SNS APIキー（X / Threads）</p>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <p class="text-sm text-blue-900 leading-relaxed">すべてのAPIキーはAES-256-GCM方式で暗号化して保存。平文保存なし。復号はサーバーサイドのみ。</p>
+      </div>
+      <h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">1-3. コンテンツ情報</h3>
+      <p class="text-sm text-gray-600 leading-relaxed">マイコンセプト、生成投稿、ラーニング投稿、スケジュール設定</p>
+      <h3 class="text-base font-semibold text-gray-800 mt-4 mb-2">1-4. 決済情報</h3>
+      <p class="text-sm text-gray-600 leading-relaxed">StripeカスタマーID等（クレジットカード番号はStripe社管理、当方サーバーに保存なし）</p>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">2. 情報の利用目的</h2>
+      <ul class="list-disc list-inside text-sm text-gray-600 space-y-1 leading-relaxed">
+        <li>サービス提供・運営・改善</li>
+        <li>AI/SNS APIへの接続（ユーザーのキー使用）</li>
+        <li>投稿生成・配信</li>
+        <li>サブスクリプション管理・決済</li>
+        <li>重要なお知らせ通知</li>
+        <li>お問い合わせ対応</li>
+        <li>不正利用防止</li>
+      </ul>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">3. 情報の第三者提供</h2>
+      <p class="text-sm text-gray-600 leading-relaxed mb-3">原則として第三者に提供しません。ただし、ユーザーの同意がある場合、法令に基づく場合、および以下の外部サービス連携を除きます。</p>
+      <p class="font-semibold text-gray-800 text-sm mb-2">外部サービス一覧:</p>
+      <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+        <li>Supabase（認証・データベース）</li>
+        <li>Vercel（ホスティング）</li>
+        <li>Stripe（決済）</li>
+        <li>Resend（メール）</li>
+        <li>Upstash（スケジューリング・レートリミット）</li>
+        <li>AI API各社（Anthropic / OpenAI / Google）</li>
+        <li>SNS API各社（X / Threads）</li>
+      </ul>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">4. データの保護</h2>
+      <ul class="list-disc list-inside text-sm text-gray-600 space-y-1 leading-relaxed">
+        <li>AES-256-GCM暗号化（APIキー）</li>
+        <li>Row Level Security（データベース）</li>
+        <li>SSL/TLS通信</li>
+        <li>Stripe署名検証（Webhook）</li>
+        <li>レートリミット</li>
+      </ul>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">5. データの保持期間</h2>
+      <p class="text-sm text-gray-600 leading-relaxed">アカウントが有効な期間中は保持します。削除申請から30日以内にすべてのデータを削除します。</p>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">6. お客様の権利</h2>
+      <ul class="list-disc list-inside text-sm text-gray-600 space-y-1 leading-relaxed">
+        <li>アクセス権（ご自身のデータの閲覧）</li>
+        <li>訂正権（データの修正）</li>
+        <li>削除権（アカウント・データの削除）</li>
+        <li>APIキー管理（追加・変更・削除）</li>
+      </ul>
+      <p class="text-sm text-gray-500 mt-2">上記はすべてアプリ内から操作可能です。</p>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">7. Cookie等の使用</h2>
+      <p class="text-sm text-gray-600 leading-relaxed">認証維持目的のみに使用します。トラッキングCookieは使用していません。</p>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">8. BYOK方式に関する特記事項</h2>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <p class="text-sm text-blue-900 leading-relaxed">APIキーはユーザーアカウントに紐づき、AI APIへのリクエストはユーザーのキーで直接実行されます。当方は利用内容を監視・記録しません。いつでもアプリ内から削除・変更可能です。</p>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">9. プライバシーポリシーの変更</h2>
+      <p class="text-sm text-gray-600 leading-relaxed">必要に応じて本ポリシーを変更することがあります。重要な変更がある場合は、サービス内またはメールにて通知します。</p>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold text-gray-900 pb-2 border-b border-gray-200 mb-4">10. お問い合わせ</h2>
+      <dl class="text-sm text-gray-600 space-y-2">
+        <div class="flex gap-4"><dt class="font-semibold text-gray-800 shrink-0">事業者名:</dt><dd>S.S.M (shirokuma sustainable marketing)</dd></div>
+        <div class="flex gap-4"><dt class="font-semibold text-gray-800 shrink-0">メール:</dt><dd>shirokuma@shirokuma-sensei.com</dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="border-t border-gray-100 py-8 text-center text-sm text-gray-400">
+    <p>S.S.M (shirokuma sustainable marketing)</p>
+  </footer>
+</div>
+</div>
+
+<script>
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+  window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>

@@ -277,6 +277,7 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     return "skipped";
   }
 
+
   // 日次リセット + プラン上限チェック
   await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
   const { data: profile } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
@@ -297,40 +298,69 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
   const hookText = isSplitSlot ? parts[0] : content.replace(/\n\n---\n\n/g, "\n\n");
   const replyText = isSplitSlot && parts.length > 1 ? parts[1] : null;
 
+  // ステータスを "posting" に変更（重複実行防止）
+  await supabase.from("posts").update({ status: "posting" }).eq("id", postId);
+
   const snsResults: Record<string, any> = {};
+  let snsSuccess = false;
   try {
     if (snsTarget === "x") {
       snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null, imageUrl);
     } else if (snsTarget === "threads") {
       snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl);
     }
+    // SNS APIからエラーが返った場合もチェック
+    const result = snsResults[snsTarget];
+    snsSuccess = result && !result.error;
   } catch (err: any) {
     snsResults[snsTarget] = { error: err.message };
+    snsSuccess = false;
   }
 
-  await supabase.from("posts").update({
-    status: "posted",
-    posted_at: new Date().toISOString(),
-    sns_post_ids: snsResults,
-  }).eq("id", postId);
+  if (snsSuccess) {
+    await supabase.from("posts").update({
+      status: "posted",
+      posted_at: new Date().toISOString(),
+      sns_post_ids: snsResults,
+    }).eq("id", postId);
 
-  await supabase.from("schedule_executions").insert({
-    user_id: userId,
-    scheduled_time: (draft.slot_config as any)?.time || "00:00",
-    status: "success",
-    post_id: postId,
-    sns_results: snsResults,
-  });
+    await supabase.from("schedule_executions").insert({
+      user_id: userId,
+      scheduled_time: (draft.slot_config as any)?.time || "00:00",
+      status: "success",
+      post_id: postId,
+      sns_results: snsResults,
+    });
 
-  // daily count（アトミック更新）
-  const planLimit = getPostLimit(plan);
-  await supabase.rpc("increment_daily_post_count", {
-    p_user_id: userId,
-    p_plan_limit: planLimit,
-  });
+    // daily count（アトミック更新）
+    const planLimit = getPostLimit(plan);
+    await supabase.rpc("increment_daily_post_count", {
+      p_user_id: userId,
+      p_plan_limit: planLimit,
+    });
 
-  console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
-  return "posted";
+    console.log(`[WORKER] Posted draft ${postId} → ${snsTarget}`);
+    return "posted";
+  } else {
+    const errorMsg = snsResults[snsTarget]?.error || "SNS投稿に失敗しました";
+    await supabase.from("posts").update({
+      status: "failed",
+      error_message: errorMsg,
+      sns_post_ids: snsResults,
+    }).eq("id", postId);
+
+    await supabase.from("schedule_executions").insert({
+      user_id: userId,
+      scheduled_time: (draft.slot_config as any)?.time || "00:00",
+      status: "failed",
+      post_id: postId,
+      error_message: errorMsg,
+      sns_results: snsResults,
+    });
+
+    console.error(`[WORKER] Failed draft ${postId} → ${snsTarget}: ${errorMsg}`);
+    return "skipped";
+  }
 }
 
 // ---------- SNS投稿ヘルパー ----------
@@ -348,7 +378,7 @@ async function postToSnsViaCron(
     .eq("user_id", userId)
     .eq("provider", provider);
 
-  if (!keys?.length) return { error: `No ${provider} API keys` };
+  if (!keys?.length) throw new Error(`No ${provider} API keys configured`);
 
   const keyMap: Record<string, string> = {};
   for (const k of keys) {
@@ -363,13 +393,13 @@ async function postToSnsViaCron(
       accessToken: keyMap["access_token"] || keyMap["accessToken"],
       accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
     };
-    if (!credentials.consumerKey) return { error: "Incomplete X keys" };
+    if (!credentials.consumerKey) throw new Error("Incomplete X keys — consumerKey missing");
   } else {
     credentials = {
       accessToken: keyMap["access_token"] || keyMap["accessToken"],
       userId: keyMap["user_id"] || keyMap["userId"],
     };
-    if (!credentials.accessToken || !credentials.userId) return { error: "Incomplete Threads keys" };
+    if (!credentials.accessToken || !credentials.userId) throw new Error("Incomplete Threads keys — accessToken or userId missing");
   }
 
   const postRes = await fetch(

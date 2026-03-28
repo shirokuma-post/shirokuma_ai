@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { Client as QStashClient } from "@upstash/qstash";
 import {
   fetchUserGenerationContext,
   fetchTrendContext,
@@ -93,11 +94,12 @@ export async function POST(request: Request) {
       const customStylePrompt = ctx.customStyleDefs.find((s) => s.id === style)?.prompt;
 
       const { system } = isSplit
-        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt })
-        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt });
+        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt })
+        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt });
 
       const slotUsesTrend = refSlot.useTrend === true;
-      const systemFull = buildFullSystemPrompt(system, style, ctx.learningContext, slotUsesTrend ? trendContext : "");
+      const themeContext = refSlot.theme ? `\n\n【テーマ指定】今回の投稿テーマ: 「${refSlot.theme}」\nこのテーマに沿った内容を生成してください。ただし無理にテーマを押し出さず、自然な投稿に仕上げること。` : "";
+      const systemFull = buildFullSystemPrompt(system, style, ctx.learningContext, slotUsesTrend ? trendContext : "") + themeContext;
 
       const contents = await generateBatch(ctx.provider, ctx.decryptedKey, systemFull, isSplit, postLength, count);
 
@@ -124,6 +126,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // 手動再生成では auto_post: false のドラフトを作成するため、
+    // QStashスケジュールは行わない（登録は /api/posts/register 経由）
+
     return NextResponse.json({
       success: true,
       generated: generated.length,
@@ -135,4 +140,51 @@ export async function POST(request: Request) {
     console.error("[GENERATE-BATCH]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+// ---------- QStash遅延投稿スケジュール ----------
+async function scheduleQStashPosts(
+  posts: any[],
+  userId: string,
+): Promise<number> {
+  const qstashToken = process.env.QSTASH_TOKEN;
+  if (!qstashToken) return 0;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const workerUrl = `${appUrl}/api/worker/post`;
+  const qstash = new QStashClient({ token: qstashToken, baseUrl: process.env.QSTASH_URL || "https://qstash-us-east-1.upstash.io" });
+  let count = 0;
+
+  for (const post of posts) {
+    try {
+      const scheduledAt = post.scheduled_at;
+      if (!scheduledAt) continue;
+
+      const delayMs = new Date(scheduledAt).getTime() - Date.now();
+
+      if (delayMs <= 60000) {
+        // 過去 or 1分以内 → 即時配信（delay=0）
+        await qstash.publishJSON({
+          url: workerUrl,
+          body: { mode: "post-draft", draftPostId: post.id, userId },
+          retries: 2,
+        });
+        console.log(`[GENERATE-BATCH] QStash immediate for ${post.id} (past due: ${scheduledAt})`);
+      } else {
+        // 未来 → 遅延配信
+        await qstash.publishJSON({
+          url: workerUrl,
+          body: { mode: "post-draft", draftPostId: post.id, userId },
+          retries: 2,
+          delay: Math.floor(delayMs / 1000),
+        });
+        console.log(`[GENERATE-BATCH] QStash delayed for ${post.id} at ${scheduledAt} (${Math.floor(delayMs / 60000)}min)`);
+      }
+      count++;
+    } catch (err: any) {
+      console.error(`[GENERATE-BATCH] QStash failed for ${post.id}:`, err.message);
+    }
+  }
+
+  return count;
 }

@@ -3,56 +3,72 @@ import type { PostStyle, Philosophy } from "@/types/database";
 // =====================================================
 // スタイル定義（既存4 + 新規4）
 // =====================================================
+// ★ スタイルは「投稿の構造・目的」だけ定義する。
+// ★ 口調・人称・文体・絵文字はキャラクター設定(VoiceProfile)が決める。
+// ★ スタイル内に口調の例文を入れるとキャラ設定を上書きしてしまうため禁止。
 const STYLE_PROMPTS: Record<PostStyle, string> = {
-  paradigm_break: `【常識破壊】
-みんなが信じている「当たり前」をぶっ壊す。
-冒頭で常識を提示 → 一撃で否定。「え、それ逆じゃない？」と思わせる。`,
+  kizuki: `【気づき】投稿の構造: 当たり前への疑問を投げる
+当たり前だと思っていたことに別の見方があると気づいた瞬間を共有する。
+読者に「え、そうだったの？」と思わせる視点のズラし。
+押し付けない。気づきをそっと差し出す。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
 
-  provocative: `【問いかけ】
-自分に問いかけるように書く。読者を攻撃しない。
-「〜って、本当にそうなのかな」「ふと思ったんだけど」。
-核心を突く問いだけど、一緒に考えようという空気。隣で考え込んでる感じ。`,
+  toi: `【問い】投稿の構造: 問いを投げて一緒に考える
+結論を出さない。答えが出てないモヤモヤを素直に出す。
+問いを投げた後、少しだけ自分なりの仮説を添える。
+読者を攻撃しない。隣で一緒に考え込む感じ。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
 
-  flip: `【ひっくり返し】
-一般的に「良い」とされていることの裏面を見せる。
-視点を180度変える。「〇〇が素晴らしいって？ 裏を見ろ」的な展開。`,
+  honne: `【本音】投稿の構造: 建前なしの率直な発言
+建前を脱いで本音を漏らす。かっこつけない。弱さも迷いも見せていい。
+みんなが思ってるけど言えないことを代弁する。
+言いたかったことは最後にちゃんと着地させる。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
 
-  poison_story: `【ショートストーリー】
-3〜5行の超短い物語。
-オチのバリエーション: ハッとする気づき、温かい余韻、切ない真実、毒のある一言。
-「ある日〜」「友達が〜」「電車で〜」で始めてもOK。`,
-
-  boyaki: `【ぼやき】
-ふと思ったことをそのまま呟く。日常の一場面から始める。
-結論を出さなくていい。でも「言いたかったこと」は最後にちゃんと着地させる。
-途中で終わらない。ちゃんとぼやき切る。尻切れトンボは絶対NG。
-「〜なんだよなぁ」「〜って思うんだけど、まぁいいか」「〜なのかもしれない。知らんけど」。
-力が抜けてるのに刺さる。主張しないのに考えさせる。`,
-
-  yueki: `【有益】
-具体的で使えるTips・ノウハウを提供。
-「これやってみ。変わるから」的なカジュアルさ。友達に教える感じ。
-「〜するだけで全然違う」「知らない人多いけど〜」。`,
-
-  jitsuwa: `【実体験風】
-「昨日〜した」「この前〜があった」で始まる。
-リアリティある体験エピソード。オチで想いの核心に繋げる。
-体験 → 気づき → 一言で締める。`,
-
-  kyoukan: `【共感】
+  yorisoi: `【寄り添い】投稿の構造: 読者の気持ちを代弁する
 読者が「あるある」「わかる」と思える内容。
-「〜ってあるよね」「みんな言わないけど、実は〜だよね」。
-読者の気持ちを代弁する。言語化してあげる。
-「俺もそうだよ」のスタンス。共感 → ちょっとした気づき。`,
+誰かの気持ちを代弁し、言語化してあげる。
+共感した上で、ちょっとした光を添える。上から教えない。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
 
-  mix: "上記8スタイルからランダムに選んで投稿。",
-  ai_optimized: "AI最適化スタイル: 過去に伸びた投稿の学習データを分析し、最もエンゲージメントが高いスタイル・構造・フックを自動選択して投稿を生成する。",
+  osusowake: `【おすそわけ】投稿の構造: 良かったことを共有する
+自分が実際にやって良かったこと、知って変わったことを共有する。
+テクニックの羅列ではなく、自分の体験を通したリアルなおすすめ。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
+
+  monogatari: `【物語】投稿の構造: エピソードで語る
+実際にあった（ありそうな）エピソードで始まる。
+体験 → 感じたこと → 一言で締める。
+オチで想いの核心にそっと繋げる。作り話感を出さない。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
+
+  uragawa: `【裏側】投稿の構造: 物事の別の側面を見せる
+表からは見えない裏面を見せる。
+攻撃や否定ではなく「こういう見方もあるよ」という視座の提供。
+視点を変えることで、読者の世界が少し広がる投稿。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
+
+  yoin: `【余韻】投稿の構造: 余白を残して終わる
+3〜5行の短い話。最後に余韻を残す。全部言い切らない。
+ハッとする気づき、温かい読後感、切ない真実、じわっとくる一言。
+オチをつけすぎない。余白を残す。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
+
+  hitokoto: `【ひとこと】投稿の構造: 1〜2行の短いつぶやき
+必ず1〜2行（50文字以内）。これは絶対条件。
+説明しない。展開しない。前置きも不要。
+日常の断片、素朴な疑問、ぽろっと出た本音をそのまま出す。
+【重要】長くなったら失敗。短ければ短いほど良い。
+※口調・人称・絵文字はキャラクター設定に従う。スタイルでは口調を指定しない。`,
+
+  mix: "上記9スタイルからランダムに1つ選んで投稿。口調はキャラクター設定に従う。",
+  ai_optimized: "AI最適化スタイル: 過去に伸びた投稿の学習データを分析し、最もエンゲージメントが高い構造・フックを自動選択。口調はキャラクター設定に従う。",
 };
 
 // ランダムスタイル候補（mix用）
 const RANDOM_STYLES: PostStyle[] = [
-  "paradigm_break", "provocative", "flip", "poison_story",
-  "boyaki", "yueki", "jitsuwa", "kyoukan",
+  "kizuki", "toi", "honne", "yorisoi",
+  "osusowake", "monogatari", "uragawa", "yoin", "hitokoto",
 ];
 
 const TIME_TONES: Record<string, string> = {
@@ -68,8 +84,8 @@ export const LENGTH_CONFIGS: Record<PostLength, { label: string; description: st
   short: {
     label: "短い",
     description: "1〜2文",
-    prompt: "50〜80文字。1〜2文で刺す。一言で心に残す。",
-    maxTokens: 250,
+    prompt: "【厳守】50〜80文字以内。1〜2文のみ。これを超える長さは絶対に禁止。短く刺す一言で。",
+    maxTokens: 300,
   },
   standard: {
     label: "標準",
@@ -132,78 +148,81 @@ export const DEFAULT_VOICE_PROFILE: VoiceProfile = {
 // =====================================================
 
 // 年齢の描写テンプレート
-const AGE_DESC: Record<string, { trait: string; speech: string; example: string }> = {
+// ★ 年齢は「人格・視点・エネルギー」を定義する。口調・語彙は品格(elegance)が決める。
+const AGE_DESC: Record<string, { trait: string; example: string }> = {
   young: {
-    trait: "20代前半。経験は浅いが感度が高い。新しいものにすぐ反応する",
-    speech: "「マジで」「ヤバい」「〜じゃん」など若い表現を自然に使う",
-    example: "「え、これマジ？ちょっと待って、今まで損してたかも」",
+    trait: "20代前半。勢いで生きてる。経験は浅いけど感度と瞬発力が高い。深く考えるより先に感じる。テンポが速い。文章は短くポンポン進む",
+    example: "「え待って、これ知らなかったの俺だけ？ マジで損してたんだけど」",
   },
   middle: {
-    trait: "30〜40代。経験はそこそこあるが偉そうにはしない。地に足がついている",
-    speech: "落ち着いているが堅くない。大人だけど気取らない表現",
+    trait: "30〜40代。酸いも甘いも知ってる。偉そうにはしないけど、ちゃんと自分の意見がある。地に足がついてる。落ち着きはあるが堅くない",
     example: "「最近ふと思ったんだけど、あれって意外と大事だったんだな」",
   },
   old: {
-    trait: "50代以上。長い経験に裏打ちされた言葉。急がない。達観している",
-    speech: "「昔はね」「歳をとるとわかるんだけど」「若い頃は〜」が自然に出る",
-    example: "「若い頃はわからなかったけど、あれは結局そういうことだったんだな」",
+    trait: "50代以上。急がない。達観してる。人生を振り返る視点が自然に出る。説得力は経験から来る。テンポはゆっくり。噛み締めるように語る",
+    example: "「若い頃はわからなかったが、あれは結局そういうことだったんだな。今ならわかる」",
   },
 };
 
 // 毒気の描写テンプレート
 const TOXICITY_DESC: Record<string, { trait: string; example_good: string; example_bad: string }> = {
   toxic: {
-    trait: "毒舌キャラ。皮肉やブラックユーモアで本質を突く。ズバッと切るが、ただの悪口にはしない。愛のある毒",
-    example_good: "「努力は裏切らない？ いや、方向間違ってたら普通に裏切るよ」",
-    example_bad: "× 誰かを名指しで攻撃する。× ただ不快なだけの表現",
+    trait: "毒舌全開。歯に衣着せない。皮肉・ブラックユーモア・辛辣なツッコミが持ち味。「それ言っちゃう？」くらいがちょうどいい。ただし特定個人への攻撃はしない",
+    example_good: "「努力は裏切らない？ いや、方向間違ってたら普通に裏切るよ。むしろ盛大に裏切る」",
+    example_bad: "× 特定の個人・団体を名指しで攻撃。× 差別的な表現。× ただ不快なだけで中身がない",
   },
   normal: {
-    trait: "自然体。攻撃的にならず、でも甘すぎもしない。率直だけど角が立たない",
+    trait: "自然体。攻撃しないし媚びない。率直に言うけど角は立てない。バランス型",
     example_good: "「これ、意外と知らない人多いんだよね」",
-    example_bad: "× 毒舌っぽい皮肉。× 過度に優しすぎる慰め",
+    example_bad: "× 毒舌っぽい皮肉。× 過度に優しすぎる慰め。× どっちかに極端に振れる",
   },
   healing: {
-    trait: "癒し系。温かい言葉で包む。否定しない。読んだ人がホッとする安心感を与える",
-    example_good: "「うまくいかない日もあるよ。でも、それでいいんだよ」",
-    example_bad: "× 皮肉。× 突き放す表現。× 「お前」「〜しろ」などキツい言い方",
+    trait: "ゆるふわ癒し系。絶対に否定しない。読んだ人がホッとして肩の力が抜ける。「大丈夫だよ」が基本スタンス。母性的な包容力。語尾がやわらかい",
+    example_good: "「がんばりすぎなくていいよ。今日も生きてるだけでえらい。ほんとに」",
+    example_bad: "× 皮肉。× 突き放す表現。× 「〜しろ」「〜すべき」などキツい命令。× 正論で追い詰める",
   },
 };
 
 // 品格の描写テンプレート
-const ELEGANCE_DESC: Record<string, { trait: string; speech: string; example: string }> = {
+const ELEGANCE_DESC: Record<string, { trait: string; speech: string; example: string; pronoun_male: string; pronoun_female: string }> = {
   netizen: {
-    trait: "ネット民。カジュアルで砕けた表現。ネットの空気感で書く",
-    speech: "「草」「それな」「〜してて草」「ワロタ」などネットスラングOK",
-    example: "「これ気づいてる人少ないけど、冷静に考えたらヤバくない？ それな、ってなった」",
+    trait: "ガチのネット民。5ch/なんJ/Twitter(X)の空気感で書く。ゆるくてふざけてるけど本質は突く",
+    speech: "「草」「それな」「〜で草」「ワロタ」「〜ンゴ」「は？」「ガチで」。顔文字OK（( ^ω^ ) (´;ω;`) ）。句読点少なめ。文末に「w」もOK",
+    example: "「これ気づいてるやつ少ないけど、冷静に考えたらヤバくない？ワイだけ？ …ワイだけか( ^ω^ )」",
+    pronoun_male: "一人称は「ワイ」「ワシ」「俺氏」のどれか。二人称は「ニキ」「お前ら」「みんな」。",
+    pronoun_female: "一人称は「ワイ」「うち」。二人称は「ニキ」「みんな」。",
   },
   normal: {
-    trait: "普通のSNSユーザー。かしこまりすぎず、崩しすぎない",
-    speech: "ネットスラングは使わない。でも堅い敬語も使わない",
+    trait: "普通のSNSユーザー。かしこまりすぎず、崩しすぎない。ちょうどいい距離感",
+    speech: "ネットスラングは使わない。堅い敬語も使わない。「〜だよね」「〜なんだよな」の自然な口語体",
     example: "「ふと思ったんだけど、これって意外と大事なことだよね」",
+    pronoun_male: "一人称は「俺」「僕」。二人称は「お前」「あんた」「みんな」。",
+    pronoun_female: "一人称は「私」「アタシ」。二人称は「あなた」「みんな」。",
   },
   elegant: {
-    trait: "知性と品がある。丁寧だけど堅すぎない。教養を感じさせる",
-    speech: "下品な言葉・スラングは使わない。「〜ではないだろうか」「〜と感じる」など品のある表現",
-    example: "「ふと立ち止まって考えてみると、私たちは大切なことを見落としているのかもしれない」",
+    trait: "品格のある紳士淑女。知性と教養を感じさせる。丁寧語・ですます調が基本。上品だけど親しみやすさも残す",
+    speech: "ですます調で書く。「〜ですね」「〜ではないでしょうか」「〜と感じます」「〜かもしれません」。スラング・砕けた表現・「ヤバい」「マジ」は絶対禁止。句読点をしっかり使う",
+    example: "「ふと立ち止まって考えてみると、私たちは大切なことを見落としているのかもしれません。そう感じることが増えました」",
+    pronoun_male: "一人称は「私」のみ。「俺」「僕」は禁止。二人称は「皆さん」「あなた」。",
+    pronoun_female: "一人称は「私」のみ。「アタシ」は禁止。二人称は「皆さん」「あなた」。",
   },
 };
 
 // 距離感の描写テンプレート
-const DISTANCE_DESC: Record<Distance, { role: string; stance: string; tone: string }> = {
+// ★ 距離感は「立場・関係性・テーマの選び方」だけを定義する。
+// ★ 口調の丁寧さ・カジュアルさは品格(elegance)が決める。ここでは口調に触れない。
+const DISTANCE_DESC: Record<Distance, { role: string; stance: string }> = {
   teacher: {
-    role: "経験豊富な先輩・メンター的な存在",
-    stance: "説教はしない。でも「あのとき気づいたこと」をふと振り返るように書く。正解を教えるんじゃなく「自分はこう思った」を静かに置く",
-    tone: "落ち着いていて、少し俯瞰した視点。先生っぽいけど偉そうじゃない",
+    role: "読者にとっての先輩・メンター的な立場",
+    stance: "正解を教えない。自分の経験から気づいたことを振り返るように書く。読者に考えるきっかけを渡す。上から目線にならない",
   },
   friend: {
-    role: "対等な友達。隣にいる存在",
-    stance: "理論を語らず、生活の中で感じたことを自分の言葉で書く。「あー、わかる」と思ってもらえることが一番大事",
-    tone: "完璧じゃない文章でいい。友達に話しかける距離感",
+    role: "読者と対等な立場。同じ目線",
+    stance: "理論や正論は語らない。日常で感じたことを共有する。共感がゴール。一緒に「わかる〜」ってなる空気",
   },
   junior: {
-    role: "まだ色々知らない後輩的な存在",
-    stance: "知ったかぶりはしない。「え、これってそういうことだったの？」という素直な驚きが武器。教える立場じゃなく一緒に「へぇ〜」ってなる",
-    tone: "先輩に話しかけるような距離感。素直で謙虚だけど、自分の感想はちゃんと言う",
+    role: "読者より経験が浅い後輩的な立場",
+    stance: "知ったかぶりはしない。素直な驚き・発見が武器。教える立場じゃなく、一緒に学んでいる途中",
   },
 };
 
@@ -222,22 +241,24 @@ export function buildVoicePrompt(vp: VoiceProfile): { basePrompt: string; voiceD
   const eleDesc = ELEGANCE_DESC[elegance] || ELEGANCE_DESC.normal;
 
   // --- 統合キャラクター描写 ---
+  // 品格(elegance)を最後に置く = AIが最も重視する位置
   const basePrompt = `あなたはSNSに投稿を書く人間です。以下があなたの人格です。この人格に忠実に書いてください。
 
-【あなたはこういう人間】
-${distDesc.role}。${ageDesc.trait}。
-${distDesc.stance}。
+【あなたの立場】
+${distDesc.role}。${distDesc.stance}。
 
-【あなたの話し方】
-${eleDesc.trait}。
-${ageDesc.speech}。
+【あなたの性格】
+${ageDesc.trait}。
 ${toxDesc.trait}。
-${distDesc.tone}。`;
+
+【あなたの話し方（これが最優先。品格設定が口調の全てを決める）】
+${eleDesc.trait}。
+${eleDesc.speech}。`;
 
   // --- 具体的な制約 ---
   const parts: string[] = [];
 
-  // 一人称・二人称
+  // 一人称・二人称（Business カスタム > elegance > gender デフォルト）
   const hasCustomPerson = vp.customFirstPerson?.trim() || vp.customSecondPerson?.trim();
   if (hasCustomPerson) {
     if (vp.customFirstPerson?.trim()) {
@@ -247,10 +268,11 @@ ${distDesc.tone}。`;
       parts.push(`二人称は「${vp.customSecondPerson.trim()}」を使う。`);
     }
     parts.push(vp.gender === "male" ? "男性の話し言葉を使う。" : "女性の話し言葉を使う。「俺」「おまえ」は絶対禁止。");
-  } else if (vp.gender === "male") {
-    parts.push("一人称は「俺」「僕」。二人称は「お前」「あんた」「みんな」。男性の話し言葉。");
   } else {
-    parts.push("一人称は「私」「アタシ」。二人称は「あなた」「みんな」。「俺」「おまえ」は絶対禁止。女性の話し言葉。");
+    // eleganceに応じた一人称・二人称を使う
+    const pronounRule = vp.gender === "male" ? eleDesc.pronoun_male : eleDesc.pronoun_female;
+    parts.push(pronounRule);
+    parts.push(vp.gender === "male" ? "男性の話し言葉。" : "女性の話し言葉。");
   }
 
   // 家族（性別に応じた表現を使う）
@@ -280,13 +302,21 @@ ${distDesc.tone}。`;
     parts.push("テンションは普通。「！」は0〜1回。落ち着いた自然なテンポ。");
   }
 
-  // 絵文字
+  // 絵文字（品格に応じて表現を変える）
   if (emoji === "many") {
-    parts.push("絵文字を2〜4個使う。😊🔥💡✨ など。");
+    if (elegance === "netizen") {
+      parts.push("顔文字・絵文字を積極的に使う。( ^ω^ ) (´;ω;`) (*´∀`*) 🔥💡 など2〜4個。「w」も語尾に使ってOK。");
+    } else {
+      parts.push("絵文字を2〜4個使う。😊🔥💡✨ など。");
+    }
   } else if (emoji === "none") {
     parts.push("絵文字・顔文字は一切使わない。テキストのみ。");
   } else {
-    parts.push("絵文字は0〜1個。基本テキスト中心。");
+    if (elegance === "netizen") {
+      parts.push("顔文字は0〜1個使ってもOK。「w」は語尾に軽く。");
+    } else {
+      parts.push("絵文字は0〜1個。基本テキスト中心。");
+    }
   }
 
   // Business: カスタム語尾
@@ -299,12 +329,11 @@ ${distDesc.tone}。`;
     parts.push(`口癖「${vp.customPhrases.trim()}」を投稿中に2〜3回自然に混ぜる。`);
   }
 
-  // --- 参考例文（最も効果的な部分）---
+  // --- 参考例文（品格の例文を最後=最強にする）---
   const examples: string[] = [];
-  examples.push(`このキャラの投稿例: ${ageDesc.example}`);
   examples.push(`OKな表現: ${toxDesc.example_good}`);
   examples.push(`NGな表現: ${toxDesc.example_bad}`);
-  examples.push(`口調の参考: ${eleDesc.example}`);
+  examples.push(`口調はこれを真似すること: ${eleDesc.example}`);
 
   const voiceDirective = `【話し方のルール】
 ${parts.join("\n")}
@@ -333,10 +362,17 @@ function buildCharacterReminder(vp: VoiceProfile): string {
   const distLabel = distance === "teacher" ? "先生的" : distance === "junior" ? "後輩的" : "友達的";
   const genderLabel = vp.gender === "male" ? "男性" : "女性";
 
-  return `=== 最終チェック（これを必ず守ること）===
-このキャラクターは【${genderLabel}・${ageLabel}・${distLabel}・${toxLabel}・${eleLabel}・${tensionLabel}】です。
-投稿を書く前に確認: この人格に合った言葉遣い・トーン・表現になっていますか？
-人格設定に矛盾する表現は絶対に使わないでください。`;
+  const emojiLabel = (vp.emoji || "normal") === "many" ? "絵文字あり" : (vp.emoji || "normal") === "none" ? "絵文字なし" : "絵文字控えめ";
+
+  return `=== 最終チェック（投稿を出力する前にこれを必ず確認）===
+キャラ: 【${genderLabel}・${ageLabel}・${distLabel}・${toxLabel}・${eleLabel}・${tensionLabel}・${emojiLabel}】
+以下を1つでも違反していたら書き直すこと:
+- ${ageLabel}の話し方になっているか？（${age === "young" ? "若者言葉" : age === "old" ? "年配者らしい落ち着いた言い回し" : "中年の自然な表現"}）
+- ${eleLabel}になっているか？（${elegance === "elegant" ? "ですます調で品のある丁寧な表現。「ヤバい」「マジ」「俺」は禁止。一人称は「私」" : elegance === "netizen" ? "ネットスラング・顔文字OK。「ワイ」「草」「ンゴ」が自然に出る" : "普通の口調。スラングなし、敬語なし"}）
+- ${tensionLabel}になっているか？（${tension === "high" ? "！多め、エネルギッシュ" : tension === "low" ? "！なし、ぼそっと" : "落ち着いたテンポ"}）
+- 絵文字ルールを守っているか？（${(vp.emoji || "normal") === "many" ? "2〜4個使う" : (vp.emoji || "normal") === "none" ? "一切使わない" : "0〜1個"}）
+- ${genderLabel}の話し言葉か？
+人格設定とスタイルが矛盾する場合、人格設定を優先すること。`;
 }
 
 // =====================================================
@@ -364,7 +400,7 @@ export type SnsTarget = "x" | "threads";
 
 const SNS_CONTEXT: Record<SnsTarget, string> = {
   x: `X（旧Twitter）向け。インパクト重視。スクロールの手を止めさせる1文目が命。最大140文字を意識。`,
-  threads: `Threads向け。共感・カジュアルさ重視。親しみやすいトーン。最大500文字まで使える。`,
+  threads: `Threads向け。共感重視。読者との距離が近い空気感。最大500文字まで使える。（※トーンはキャラクター設定に従う。カジュアルとは限らない）`,
 };
 
 // =====================================================
@@ -451,15 +487,22 @@ function buildAntiRepetitionContext(recentPosts?: string[], recentTitles?: strin
   // タイトルがあればタイトルだけ使う（スタイルリーク防止）
   if (recentTitles && recentTitles.length > 0) {
     const titles = recentTitles.slice(0, 5);
-    return `\n【避けるテーマ】以下と同じテーマ・書き出し・構造は使わないこと:
-${titles.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+    return `\n\n【NG: 以下のテーマは既出。絶対に避けて全く別の切り口で書くこと】
+${titles.map((t, i) => `- ${t}`).join("\n")}
+※上記の文体・トーン・構造を真似しないこと。完全に新しい視点で書く。`;
   }
-  // タイトルがない場合はトピックキーワードだけ抽出
+  // タイトルがない場合はキーワードだけ抽出（生テキストは渡さない）
   if (!recentPosts || recentPosts.length === 0) return "";
   const recent = recentPosts.slice(0, 5);
-  // 生テキストは渡さず、最初の20文字だけヒントとして使う
-  return `\n【避けるテーマ】以下と同じテーマ・書き出し・構造は使わないこと:
-${recent.map((p, i) => `${i + 1}. 「${p.slice(0, 20)}…」`).join("\n")}`;
+  // 内容からキーワードだけ抽出（冒頭文は文体リークするので避ける）
+  const keywords = recent.map(p => {
+    // 名詞的なキーワードを抽出（最初の15文字からカギカッコ・句読点を除去）
+    return p.slice(0, 15).replace(/[「」『』、。！？\n…]/g, "").trim();
+  }).filter(k => k.length > 0);
+  if (keywords.length === 0) return "";
+  return `\n\n【NG: 以下のキーワード周辺のテーマは既出。全く別の話題で書くこと】
+${keywords.map(k => `- ${k}`).join("\n")}
+※上記と似た書き出し・構造・トーンにならないよう注意。新鮮な視点で。`;
 }
 
 // =====================================================
@@ -475,13 +518,14 @@ interface GenerateOptions {
   customPrompt?: string;
   learningContext?: string;
   recentPosts?: string[];
+  recentTitles?: string[];
   customStylePrompt?: string;
 }
 
 // 方言指示はbuildVoicePromptに統合済み。個別のリマインダーは不要。
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
+  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customPrompt, learningContext, recentPosts, recentTitles, customStylePrompt } = options;
 
   // ai_optimized: 学習データが主軸、スタイルはAIが自動選択
   if (style === "ai_optimized") {
@@ -497,7 +541,7 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
-  const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   // プロンプト構造: 優先度順に配置（上が最優先）
   // キャラクター遵守リマインダーを生成
@@ -505,10 +549,11 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
 
   const system = `${basePrompt}
 
-=== 1. キャラクター設定（最優先: 必ずこの人格で書く）===
+=== 1. キャラクター設定（最優先: 口調・人称・絵文字は全てここで決まる）===
 ${voiceDirective}
+【重要】スタイル(下記)は投稿の「構造」だけを決める。口調・人称・絵文字・文体は全てこのキャラクター設定に従うこと。スタイル内の例文に引きずられてキャラが変わるのは絶対NG。
 
-=== 2. 投稿スタイル（この型で書く）===
+=== 2. 投稿スタイル（構造・目的のみ。口調はキャラ設定に従う）===
 ${stylePrompt}
 
 === 3. 文字数・トーン ===
@@ -526,37 +571,42 @@ ${customPrompt ? `\n=== 6. カスタム指示 ===\n${customPrompt}` : ""}
 
 ${characterReminder}`;
 
+  const lengthWarning = postLength === "short"
+    ? "\n※【重要】短い設定です。投稿は必ず80文字以内・1〜2文に収めてください。長い投稿は失敗です。"
+    : "\n※途中で切れないよう、必ず最後まで書き切ってください。";
+
   const user = `SNS投稿を1つ書いてください。以下のフォーマットで出力:
 [TITLE] この投稿のテーマを10文字以内で（例: 朝の習慣、完璧主義の罠）
 [POST] 投稿テキスト
 
-※[TITLE]と[POST]のラベルは必ず含めてください。投稿テキスト以外の説明は不要です。
-※途中で切れないよう、必ず最後まで書き切ってください。`;
+※[TITLE]と[POST]のラベルは必ず含めてください。投稿テキスト以外の説明は不要です。${lengthWarning}`;
   return { system, user };
 }
 
 function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, timeOfDay, postLength = "standard", voiceProfile, snsTarget, learningContext, recentPosts } = options;
+  const { philosophy, timeOfDay, postLength = "standard", voiceProfile, snsTarget, learningContext, recentPosts, recentTitles } = options;
 
   const lengthConfig = LENGTH_CONFIGS[postLength];
   const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const philosophyContext = getPhilosophyContext(philosophy);
-  const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   const hasLearning = learningContext && learningContext.trim().length > 0;
 
   const system = `${basePrompt}
 
-=== 1. キャラクター設定（最優先: 必ずこの人格で書く）===
+=== 1. キャラクター設定（最優先: 口調・人称・絵文字は全てここで決まる）===
 ${voiceDirective}
+【重要】口調・人称・絵文字・文体は全てこのキャラクター設定に従うこと。
 
 === 2. 投稿スタイル ===
-${hasLearning ? `以下の学習データから勝ちパターンを抽出し、最適なスタイルで書く。
+${hasLearning ? `以下の学習データから勝ちパターンを抽出し、最適な構造で書く。
 表現をコピーするのではなく、パターンの本質を活かした新しい投稿にすること。
+口調はキャラクター設定に従う。
 
-${learningContext}` : `以下から最もエンゲージメントが高くなるスタイルを自動選択:
-常識破壊 / 問いかけ / ひっくり返し / ストーリー / ぼやき / 有益 / 実体験風 / 共感`}
+${learningContext}` : `以下から最もエンゲージメントが高くなる構造を自動選択:
+気づき / 問い / 本音 / 寄り添い / おすそわけ / 物語 / 裏側 / 余韻 / ひとこと`}
 
 === 3. 文字数・トーン ===
 文字数: ${lengthConfig.prompt}
@@ -592,7 +642,7 @@ ${buildCharacterReminder(vp)}`;
 // 分割投稿（フック → リプライ）— 好奇心ギャップ式
 // =====================================================
 export function buildSplitPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, voiceProfile, snsTarget, customPrompt, recentPosts, customStylePrompt } = options;
+  const { philosophy, style, timeOfDay, voiceProfile, snsTarget, customPrompt, recentPosts, recentTitles, customStylePrompt } = options;
   const actualStyle = style === "mix"
     ? RANDOM_STYLES[Math.floor(Math.random() * RANDOM_STYLES.length)]
     : style;
@@ -601,7 +651,7 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
-  const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   // フックのバリエーション（毎回ランダムで1つ選ぶ）
   const hookVariations = [
@@ -616,10 +666,11 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
 
   const system = `${basePrompt}
 
-=== 1. キャラクター設定（最優先: 必ずこの人格で書く）===
+=== 1. キャラクター設定（最優先: 口調・人称・絵文字は全てここで決まる）===
 ${voiceDirective}
+【重要】口調・人称・絵文字・文体は全てこのキャラクター設定に従うこと。スタイルは構造だけを決める。
 
-=== 2. 投稿スタイル ===
+=== 2. 投稿スタイル（構造・目的のみ）===
 ${stylePrompt}
 
 === 3. 分割投稿フォーマット（厳守）===

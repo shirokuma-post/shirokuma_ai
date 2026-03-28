@@ -7,14 +7,15 @@ export type AiProvider = "anthropic" | "openai" | "google";
 export type SnsProvider = "x" | "threads";
 export type PostStatus = "draft" | "scheduled" | "posted" | "failed" | "pending_approval" | "posting";
 export type PostStyle =
-  | "paradigm_break"
-  | "provocative"
-  | "flip"
-  | "poison_story"
-  | "boyaki"
-  | "yueki"
-  | "jitsuwa"
-  | "kyoukan"
+  | "kizuki"
+  | "toi"
+  | "honne"
+  | "yorisoi"
+  | "osusowake"
+  | "monogatari"
+  | "uragawa"
+  | "yoin"
+  | "hitokoto"
   | "mix"
   | "ai_optimized";
 export type PlanType = "free" | "pro" | "business";
@@ -88,6 +89,7 @@ export interface ScheduleSlot {
   character: string;
   length: string;
   split: boolean;
+  theme?: string;
 }
 
 export interface ScheduleConfig {

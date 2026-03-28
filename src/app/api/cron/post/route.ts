@@ -37,6 +37,19 @@ async function handler(request: Request) {
 
     console.log(`[CRON/POST] Running at JST ${currentTime} (${todayStr})`);
 
+    // 0. "posting" のまま1時間以上放置された投稿を "draft" に戻す（自動復旧）
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const { data: stuckPosts } = await supabase
+      .from("posts")
+      .update({ status: "draft", error_message: "posting状態タイムアウト — 自動復旧" })
+      .eq("status", "posting")
+      .lt("updated_at", oneHourAgo)
+      .eq("auto_post", true)
+      .select("id");
+    if (stuckPosts?.length) {
+      console.log(`[CRON/POST] Recovered ${stuckPosts.length} stuck posts: ${stuckPosts.map((p: any) => p.id).join(", ")}`);
+    }
+
     // 1. Get today's drafts that are due (auto_post = true)
     const { data: drafts, error: draftError } = await supabase
       .from("posts")
@@ -50,7 +63,7 @@ async function handler(request: Request) {
       return NextResponse.json({ message: "No drafts to post", posted: 0, time: currentTime });
     }
 
-    // 2. Filter drafts: scheduled_at が現在時刻の -15分 ～ +4分 の範囲内のみ
+    // 2. Filter drafts: scheduled_at が現在時刻の -4分 ～ +15分 の範囲内のみ
     //    過去15分超のドラフトは一斉投稿を防ぐためスキップ
     const nowMs = now.getTime();
     const dueDrafts = drafts.filter((draft: any) => {
@@ -62,7 +75,7 @@ async function handler(request: Request) {
     });
 
     if (dueDrafts.length === 0) {
-      return NextResponse.json({ message: "No matching drafts", posted: 0, time: currentTime });
+      return NextResponse.json({ message: "No due drafts yet", posted: 0, time: currentTime });
     }
 
     console.log(`[CRON/POST] Found ${dueDrafts.length} due drafts`);
@@ -91,7 +104,7 @@ async function handler(request: Request) {
         };
 
         if (qstashToken) {
-          const qstash = new Client({ token: qstashToken });
+          const qstash = new Client({ token: qstashToken, baseUrl: process.env.QSTASH_URL || "https://qstash-us-east-1.upstash.io" });
           await qstash.publishJSON({
             url: workerUrl,
             body: payload,

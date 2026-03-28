@@ -16,21 +16,23 @@ interface Slot {
   length: string;
   split: boolean;
   useTrend?: boolean;
+  theme?: string;
 }
 
 const PLAN_MAX_SLOTS: Record<UserPlan, number> = { free: 3, pro: 10, business: -1 };
 function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" ? 1 : 2; }
 
 const STYLES = [
-  { id: "mix", label: "ミックス" },
-  { id: "paradigm_break", label: "常識破壊" },
-  { id: "provocative", label: "問いかけ" },
-  { id: "flip", label: "ひっくり返し" },
-  { id: "poison_story", label: "ストーリー" },
-  { id: "boyaki", label: "ぼやき" },
-  { id: "yueki", label: "有益" },
-  { id: "jitsuwa", label: "実体験風" },
-  { id: "kyoukan", label: "共感" },
+  { id: "mix", label: "おまかせ" },
+  { id: "kizuki", label: "気づき" },
+  { id: "toi", label: "問い" },
+  { id: "honne", label: "本音" },
+  { id: "yorisoi", label: "寄り添い" },
+  { id: "osusowake", label: "おすそわけ" },
+  { id: "monogatari", label: "物語" },
+  { id: "uragawa", label: "裏側" },
+  { id: "yoin", label: "余韻" },
+  { id: "hitokoto", label: "ひとこと" },
   { id: "ai_optimized", label: "AI最適化" },
 ];
 
@@ -46,8 +48,8 @@ const TARGETS = [
   { id: "threads" as const, label: "Threads" },
 ];
 
-// Free: 5種、Pro+: 全10種
-const FREE_STYLES = ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"];
+// Free: 4種、Pro+: 全11種
+const FREE_STYLES = ["mix", "honne", "kizuki", "hitokoto"];
 
 const TREND_CATEGORY_OPTIONS = [
   { id: "general", label: "総合" },
@@ -152,10 +154,13 @@ export default function SchedulePage() {
   async function handleSave() {
     setSaving(true); setSaved(false);
     try {
+      // 保存前に時間順でソート
+      const sorted = [...slots].sort((a, b) => a.time.localeCompare(b.time));
+      setSlots(sorted);
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories }),
+        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
@@ -259,6 +264,7 @@ export default function SchedulePage() {
                       <span className="text-sm font-mono font-semibold text-gray-900">{slot.time}</span>
                       <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (slot.target === "x" ? "bg-gray-100 text-gray-700" : slot.target === "threads" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700")}>{targetLabel}</span>
                       <span className="text-xs text-gray-500">{styleLabel}</span>
+                      {slot.theme && <span className="text-xs text-blue-500 truncate max-w-[120px]">{slot.theme}</span>}
                       {slot.split && <span className="text-xs text-purple-500">分割</span>}
                     </div>
                     <div className="flex items-center gap-2">
@@ -322,6 +328,18 @@ export default function SchedulePage() {
                               className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (slot.style === cs.id ? "border-purple-500 bg-purple-50 text-purple-700" : "border-purple-200 text-purple-600 hover:border-purple-300")}>{cs.name}</button>
                           ))}
                         </div>
+                      </div>
+
+                      {/* Theme */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">テーマ指定 <span className="text-gray-400 font-normal">（空欄＝おまかせ）</span></label>
+                        <input
+                          type="text"
+                          value={slot.theme || ""}
+                          onChange={(e) => updateSlot(i, { theme: e.target.value })}
+                          placeholder="例: 朝の習慣について、新しい挑戦、感謝の気持ち"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 placeholder:text-gray-300"
+                        />
                       </div>
 
                       {/* Voice Profile Summary */}

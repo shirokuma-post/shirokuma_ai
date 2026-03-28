@@ -35,10 +35,16 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { content, platform, metrics, aiProvider, aiApiKey } = body;
+    const { content, platform, metrics, aiProvider, aiApiKey, sourceType, sourceAccount } = body;
 
     if (!content?.trim()) {
       return NextResponse.json({ error: "投稿内容を入力してください" }, { status: 400 });
+    }
+
+    // 他者投稿はBusinessプラン限定
+    const isOthers = sourceType === "others";
+    if (isOthers && profile.plan !== "business") {
+      return NextResponse.json({ error: "他者投稿の学習はBusinessプランで利用できます" }, { status: 403 });
     }
 
     // AI analysis (optional - only if API key provided)
@@ -60,6 +66,8 @@ export async function POST(request: Request) {
         platform: platform || "x",
         metrics: metrics || {},
         ai_analysis: aiAnalysis,
+        source_type: isOthers ? "others" : "own",
+        ...(isOthers && sourceAccount ? { source_account: sourceAccount.trim() } : {}),
       })
       .select()
       .single();
@@ -71,14 +79,23 @@ export async function POST(request: Request) {
   }
 }
 
-// DELETE
+// DELETE (単体 or 一括)
 export async function DELETE(request: Request) {
   try {
     const supabase = createServerSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id } = await request.json();
+    const body = await request.json();
+    const { id, ids } = body;
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // 一括削除
+      const { error } = await supabase.from("learning_posts").delete().in("id", ids).eq("user_id", user.id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, deleted: ids.length });
+    }
+
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
     const { error } = await supabase.from("learning_posts").delete().eq("id", id).eq("user_id", user.id);
