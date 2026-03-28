@@ -77,14 +77,28 @@ export async function fetchUserGenerationContext(
   const provider = aiKey.provider;
   const decryptedKey = decrypt(aiKey.encrypted_value);
 
-  // 3. 学習データ
+  // 3. 学習データ（他者投稿はBusinessプランのみ）
   let learningContext = "";
   try {
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", userId)
+      .single();
+    const userPlan = userProfile?.plan || "free";
+
     const { data: lp } = await supabase
       .from("learning_posts")
       .select("content, ai_analysis, source_type, source_account")
       .eq("user_id", userId);
-    if (lp?.length) learningContext = buildLearningContext(lp);
+
+    if (lp?.length) {
+      // Business以外は他者投稿を除外
+      const filtered = userPlan === "business"
+        ? lp
+        : lp.filter((p: any) => p.source_type !== "others");
+      if (filtered.length) learningContext = buildLearningContext(filtered);
+    }
   } catch (err) {
     console.warn("[generation] Failed to fetch learning data:", err);
   }
