@@ -7,14 +7,14 @@ export type AiProvider = "anthropic" | "openai" | "google";
 export type SnsProvider = "x" | "threads";
 export type PostStatus = "draft" | "scheduled" | "posted" | "failed" | "pending_approval" | "posting";
 export type PostStyle =
-  | "paradigm_break"
-  | "provocative"
-  | "flip"
-  | "poison_story"
-  | "boyaki"
-  | "yueki"
-  | "jitsuwa"
-  | "kyoukan"
+  | "kizuki"
+  | "toi"
+  | "honne"
+  | "yorisoi"
+  | "osusowake"
+  | "monogatari"
+  | "uragawa"
+  | "yoin"
   | "mix"
   | "ai_optimized";
 export type PlanType = "free" | "pro" | "business";

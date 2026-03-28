@@ -22,15 +22,15 @@ const PLAN_MAX_SLOTS: Record<UserPlan, number> = { free: 3, pro: 10, business: -
 function planLevel(p: UserPlan): number { return p === "free" ? 0 : p === "pro" ? 1 : 2; }
 
 const STYLES = [
-  { id: "mix", label: "ミックス" },
-  { id: "paradigm_break", label: "常識破壊" },
-  { id: "provocative", label: "問いかけ" },
-  { id: "flip", label: "ひっくり返し" },
-  { id: "poison_story", label: "ストーリー" },
-  { id: "boyaki", label: "ぼやき" },
-  { id: "yueki", label: "有益" },
-  { id: "jitsuwa", label: "実体験風" },
-  { id: "kyoukan", label: "共感" },
+  { id: "mix", label: "おまかせ" },
+  { id: "kizuki", label: "気づき" },
+  { id: "toi", label: "問い" },
+  { id: "honne", label: "本音" },
+  { id: "yorisoi", label: "寄り添い" },
+  { id: "osusowake", label: "おすそわけ" },
+  { id: "monogatari", label: "物語" },
+  { id: "uragawa", label: "裏側" },
+  { id: "yoin", label: "余韻" },
   { id: "ai_optimized", label: "AI最適化" },
 ];
 

@@ -11,17 +11,17 @@ type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
 type SnsTarget = "x" | "threads";
 
-const STYLE_LABELS: Record<string, string> = { paradigm_break: "常識破壊", provocative: "問いかけ", flip: "ひっくり返し", poison_story: "ストーリー", boyaki: "ぼやき", yueki: "有益", jitsuwa: "実体験風", kyoukan: "共感", mix: "ミックス", ai_optimized: "AI最適化" };
+const STYLE_LABELS: Record<string, string> = { kizuki: "気づき", toi: "問い", honne: "本音", yorisoi: "寄り添い", osusowake: "おすそわけ", monogatari: "物語", uragawa: "裏側", yoin: "余韻", mix: "おまかせ", ai_optimized: "AI最適化", paradigm_break: "気づき", provocative: "問い", flip: "裏側", poison_story: "余韻", boyaki: "本音", yueki: "おすそわけ", jitsuwa: "物語", kyoukan: "寄り添い" };
 const STYLE_OPTIONS = [
-  { id: "mix", name: "ミックス", desc: "8スタイルからランダム" },
-  { id: "paradigm_break", name: "常識破壊", desc: "当たり前をぶっ壊す" },
-  { id: "provocative", name: "問いかけ", desc: "一緒に考えようという問い" },
-  { id: "flip", name: "ひっくり返し", desc: "視点を180度変える" },
-  { id: "poison_story", name: "ストーリー", desc: "短い物語にオチがある" },
-  { id: "boyaki", name: "ぼやき", desc: "ふと思った独り言" },
-  { id: "yueki", name: "有益", desc: "使えるTips・ノウハウ" },
-  { id: "jitsuwa", name: "実体験風", desc: "リアルな体験エピソード" },
-  { id: "kyoukan", name: "共感", desc: "「わかる」を代弁する" },
+  { id: "mix", name: "おまかせ", desc: "8スタイルからランダム" },
+  { id: "kizuki", name: "気づき", desc: "ふと気づいたことがある" },
+  { id: "toi", name: "問い", desc: "これってどうなんだろう" },
+  { id: "honne", name: "本音", desc: "正直に言うとさ" },
+  { id: "yorisoi", name: "寄り添い", desc: "わかるよ、その気持ち" },
+  { id: "osusowake", name: "おすそわけ", desc: "いいこと知ったから教えるね" },
+  { id: "monogatari", name: "物語", desc: "こんなことがあってさ" },
+  { id: "uragawa", name: "裏側", desc: "実はこうなんだよ" },
+  { id: "yoin", name: "余韻", desc: "…って、ふと思った" },
   { id: "ai_optimized", name: "AI最適化", desc: "学習パターンからAIが最適化" },
 ];
 const LENGTH_OPTIONS_X: { id: PostLength; label: string; desc: string; minPlan: UserPlan }[] = [
