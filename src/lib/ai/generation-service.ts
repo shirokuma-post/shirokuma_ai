@@ -92,8 +92,10 @@ export async function fetchUserGenerationContext(
       .select("content, ai_analysis, source_type, source_account")
       .eq("user_id", userId);
 
-    if (lp?.length) {
-      // Business以外は他者投稿を除外
+    if (lp?.length && userPlan !== "free") {
+      // Free: 学習データ全て除外
+      // Pro: 自分の投稿のみ
+      // Business: 自分＋他者
       const filtered = userPlan === "business"
         ? lp
         : lp.filter((p: any) => p.source_type !== "others");
