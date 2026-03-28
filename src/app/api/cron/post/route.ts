@@ -63,20 +63,17 @@ async function handler(request: Request) {
       return NextResponse.json({ message: "No drafts to post", posted: 0, time: currentTime });
     }
 
-    // 2. Filter drafts matching current time (within 5 min window)
+    // 2. Filter drafts that are due (scheduled_at <= now)
+    // 過去のスロットも含めて全て拾う（QStashが失敗した場合のフォールバック）
+    const nowMs = now.getTime();
     const dueDrafts = drafts.filter((draft: any) => {
       if (!draft.scheduled_at) return false;
-      const scheduledDate = new Date(draft.scheduled_at);
-      const scheduledJst = new Date(scheduledDate.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-      const sh = scheduledJst.getHours();
-      const sm = scheduledJst.getMinutes();
-      const [ch, cm] = currentTime.split(":").map(Number);
-      const diff = Math.abs(sh * 60 + sm - (ch * 60 + cm));
-      return diff <= 4;
+      const scheduledMs = new Date(draft.scheduled_at).getTime();
+      return scheduledMs <= nowMs;
     });
 
     if (dueDrafts.length === 0) {
-      return NextResponse.json({ message: "No matching drafts", posted: 0, time: currentTime });
+      return NextResponse.json({ message: "No due drafts yet", posted: 0, time: currentTime });
     }
 
     console.log(`[CRON/POST] Found ${dueDrafts.length} due drafts`);

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       .from("posts")
       .delete()
       .eq("user_id", user.id)
-      .eq("status", "draft")
+      .in("status", ["draft", "posting"])
       .gte("scheduled_at", todayStr + "T00:00:00+09:00")
       .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
@@ -103,7 +103,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // QStash遅延投稿をスケジュール
+    // QStash遅延投稿をスケジュール（未来のスロットのみ）
+    // 過去のスロットはcron/postが次回実行時に拾う
     const scheduled = await scheduleQStashPosts(generated, user.id);
 
     return NextResponse.json({ success: true, generated: generated.length, scheduled, posts: generated });
@@ -132,18 +133,28 @@ async function scheduleQStashPosts(
       if (!scheduledAt) continue;
 
       const delayMs = new Date(scheduledAt).getTime() - Date.now();
-      if (delayMs <= 0) continue; // 過去の時刻はスキップ
 
-      await qstash.publishJSON({
-        url: workerUrl,
-        body: { mode: "post-draft", draftPostId: post.id, userId },
-        retries: 2,
-        delay: Math.floor(delayMs / 1000),
-      });
+      if (delayMs <= 60000) {
+        // 過去 or 1分以内 → 即時配信（delay=0）
+        await qstash.publishJSON({
+          url: workerUrl,
+          body: { mode: "post-draft", draftPostId: post.id, userId },
+          retries: 2,
+        });
+        console.log(`[GENERATE-BATCH] QStash immediate for ${post.id} (past due: ${scheduledAt})`);
+      } else {
+        // 未来 → 遅延配信
+        await qstash.publishJSON({
+          url: workerUrl,
+          body: { mode: "post-draft", draftPostId: post.id, userId },
+          retries: 2,
+          delay: Math.floor(delayMs / 1000),
+        });
+        console.log(`[GENERATE-BATCH] QStash delayed for ${post.id} at ${scheduledAt} (${Math.floor(delayMs / 60000)}min)`);
+      }
       count++;
-      console.log(`[GENERATE-BATCH] Scheduled QStash for ${post.id} at ${scheduledAt}`);
     } catch (err: any) {
-      console.error(`[GENERATE-BATCH] QStash schedule failed for ${post.id}:`, err.message);
+      console.error(`[GENERATE-BATCH] QStash failed for ${post.id}:`, err.message);
     }
   }
 
