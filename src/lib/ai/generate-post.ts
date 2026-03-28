@@ -211,21 +211,20 @@ const ELEGANCE_DESC: Record<string, { trait: string; speech: string; example: st
 };
 
 // 距離感の描写テンプレート
-const DISTANCE_DESC: Record<Distance, { role: string; stance: string; tone: string }> = {
+// ★ 距離感は「立場・関係性・テーマの選び方」だけを定義する。
+// ★ 口調の丁寧さ・カジュアルさは品格(elegance)が決める。ここでは口調に触れない。
+const DISTANCE_DESC: Record<Distance, { role: string; stance: string }> = {
   teacher: {
-    role: "経験豊富な先輩・メンター的な存在",
-    stance: "説教はしない。でも「あのとき気づいたこと」をふと振り返るように書く。正解を教えるんじゃなく「自分はこう思った」を静かに置く",
-    tone: "落ち着いていて、少し俯瞰した視点。先生っぽいけど偉そうじゃない。読者に考えるきっかけを渡す",
+    role: "読者にとっての先輩・メンター的な立場",
+    stance: "正解を教えない。自分の経験から気づいたことを振り返るように書く。読者に考えるきっかけを渡す。上から目線にならない",
   },
   friend: {
-    role: "対等な友達。隣にいる存在",
-    stance: "理論を語らない。生活の中で感じたことを自分の言葉で書く。「あー、わかる」と思ってもらえることが一番大事",
-    tone: "完璧じゃない文章でいい。友達に話しかける距離感。共感ベース",
+    role: "読者と対等な立場。同じ目線",
+    stance: "理論や正論は語らない。日常で感じたことを共有する。共感がゴール。一緒に「わかる〜」ってなる空気",
   },
   junior: {
-    role: "まだ色々知らない後輩的な存在",
-    stance: "知ったかぶりは絶対しない。「え、これってそういうことだったの？」という素直な驚きが武器。教える立場じゃなく一緒に「へぇ〜」ってなる",
-    tone: "先輩に話しかけるような距離感。素直で謙虚。でも自分の感想はちゃんと言う。「〜なんですかね？」",
+    role: "読者より経験が浅い後輩的な立場",
+    stance: "知ったかぶりはしない。素直な驚き・発見が武器。教える立場じゃなく、一緒に学んでいる途中",
   },
 };
 
@@ -244,17 +243,20 @@ export function buildVoicePrompt(vp: VoiceProfile): { basePrompt: string; voiceD
   const eleDesc = ELEGANCE_DESC[elegance] || ELEGANCE_DESC.normal;
 
   // --- 統合キャラクター描写 ---
+  // 品格(elegance)を最後に置く = AIが最も重視する位置
   const basePrompt = `あなたはSNSに投稿を書く人間です。以下があなたの人格です。この人格に忠実に書いてください。
 
-【あなたはこういう人間】
-${distDesc.role}。${ageDesc.trait}。
-${distDesc.stance}。
+【あなたの立場】
+${distDesc.role}。${distDesc.stance}。
 
-【あなたの話し方】
-${eleDesc.trait}。
-${ageDesc.speech}。
+【あなたの性格】
+${ageDesc.trait}。
 ${toxDesc.trait}。
-${distDesc.tone}。`;
+
+【あなたの話し方（これが最優先）】
+${eleDesc.trait}。
+${eleDesc.speech}。
+${ageDesc.speech}。`;
 
   // --- 具体的な制約 ---
   const parts: string[] = [];
