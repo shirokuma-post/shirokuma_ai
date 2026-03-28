@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     }
 
     // レートリミット: 1分に10回まで（生成はBYOKなので投稿より緩め）
-    const rl = checkRateLimit(`generate:${authUser.id}`, 10, 60_000);
+    const rl = await checkRateLimit(`generate:${authUser.id}`, 10, 60_000);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: "生成リクエストが多すぎます。少し待ってからお試しください。" },

@@ -45,34 +45,49 @@ async function handler(request: Request) {
     let totalGenerated = 0;
     const errors: { userId: string; error: string }[] = [];
 
-    // 各ユーザーを処理
-    for (const config of configs) {
-      const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
-      if (slots.length === 0) continue;
+    // 有効なスロットを持つconfigだけフィルタ
+    const validConfigs = configs.filter((c) => {
+      const slots = (c.slots as ScheduleSlot[]) || [];
+      return slots.length > 0;
+    });
 
-      const userId = config.user_id;
-      const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
+    // 5ユーザー並列で処理（DB接続・AI API負荷のバランス）
+    const CONCURRENCY = 5;
+    for (let i = 0; i < validConfigs.length; i += CONCURRENCY) {
+      const chunk = validConfigs.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        chunk.map(async (config) => {
+          const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
+          const userId = config.user_id;
+          const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
-      try {
-        // 既存ドラフト削除
-        await supabase
-          .from("posts")
-          .delete()
-          .eq("user_id", userId)
-          .eq("status", "draft")
-          .gte("scheduled_at", todayStr + "T00:00:00+09:00")
-          .lte("scheduled_at", todayStr + "T23:59:59+09:00");
+          // 既存ドラフト削除
+          await supabase
+            .from("posts")
+            .delete()
+            .eq("user_id", userId)
+            .eq("status", "draft")
+            .gte("scheduled_at", todayStr + "T00:00:00+09:00")
+            .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-        const postIds = await generateDraftsForUser(supabase, userId, slots, trendCategories, todayStr);
-        totalGenerated += postIds.length;
+          const postIds = await generateDraftsForUser(supabase, userId, slots, trendCategories, todayStr);
 
-        // QStash遅延投稿をスケジュール
-        await scheduleQStashPosts(postIds, userId);
+          // QStash遅延投稿をスケジュール
+          await scheduleQStashPosts(postIds, userId);
 
-        console.log(`[BATCH-GENERATE] Generated ${postIds.length} drafts for user ${userId}`);
-      } catch (err: any) {
-        console.error(`[BATCH-GENERATE] Error for user ${userId}:`, err.message);
-        errors.push({ userId, error: err.message });
+          console.log(`[BATCH-GENERATE] Generated ${postIds.length} drafts for user ${userId}`);
+          return { userId, count: postIds.length };
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          totalGenerated += result.value.count;
+        } else {
+          const errMsg = result.reason?.message || String(result.reason);
+          console.error(`[BATCH-GENERATE] Chunk error:`, errMsg);
+          errors.push({ userId: "unknown", error: errMsg });
+        }
       }
     }
 

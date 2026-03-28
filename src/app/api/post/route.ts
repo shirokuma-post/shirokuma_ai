@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       authUserId = authUser.id;
 
       // レートリミット: 1分に5回まで
-      const rl = checkRateLimit(`post:${authUser.id}`, 5, 60_000);
+      const rl = await checkRateLimit(`post:${authUser.id}`, 5, 60_000);
       if (!rl.allowed) {
         return NextResponse.json(
           { error: "リクエストが多すぎます。少し待ってからお試しください。" },
