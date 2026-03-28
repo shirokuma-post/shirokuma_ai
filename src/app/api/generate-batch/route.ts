@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { Client as QStashClient } from "@upstash/qstash";
 import {
   fetchUserGenerationContext,
   fetchTrendContext,
@@ -102,9 +103,49 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, generated: generated.length, posts: generated });
+    // QStash遅延投稿をスケジュール
+    const scheduled = await scheduleQStashPosts(generated, user.id);
+
+    return NextResponse.json({ success: true, generated: generated.length, scheduled, posts: generated });
   } catch (error: any) {
     console.error("[GENERATE-BATCH]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+// ---------- QStash遅延投稿スケジュール ----------
+async function scheduleQStashPosts(
+  posts: any[],
+  userId: string,
+): Promise<number> {
+  const qstashToken = process.env.QSTASH_TOKEN;
+  if (!qstashToken) return 0;
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const workerUrl = `${appUrl}/api/worker/post`;
+  const qstash = new QStashClient({ token: qstashToken });
+  let count = 0;
+
+  for (const post of posts) {
+    try {
+      const scheduledAt = post.scheduled_at;
+      if (!scheduledAt) continue;
+
+      const delayMs = new Date(scheduledAt).getTime() - Date.now();
+      if (delayMs <= 0) continue; // 過去の時刻はスキップ
+
+      await qstash.publishJSON({
+        url: workerUrl,
+        body: { mode: "post-draft", draftPostId: post.id, userId },
+        retries: 2,
+        delay: Math.floor(delayMs / 1000),
+      });
+      count++;
+      console.log(`[GENERATE-BATCH] Scheduled QStash for ${post.id} at ${scheduledAt}`);
+    } catch (err: any) {
+      console.error(`[GENERATE-BATCH] QStash schedule failed for ${post.id}:`, err.message);
+    }
+  }
+
+  return count;
 }
