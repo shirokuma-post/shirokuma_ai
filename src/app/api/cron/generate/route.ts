@@ -112,7 +112,7 @@ async function scheduleQStashPosts(
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const workerUrl = `${appUrl}/api/worker/post`;
-  const qstash = new QStashClient({ token: qstashToken });
+  const qstash = new QStashClient({ token: qstashToken, baseUrl: process.env.QSTASH_URL || "https://qstash.upstash.io" });
 
   for (const { id, scheduledAt } of postIds) {
     try {

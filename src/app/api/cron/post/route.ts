@@ -102,7 +102,7 @@ async function handler(request: Request) {
         };
 
         if (qstashToken) {
-          const qstash = new Client({ token: qstashToken });
+          const qstash = new Client({ token: qstashToken, baseUrl: process.env.QSTASH_URL || "https://qstash.upstash.io" });
           await qstash.publishJSON({
             url: workerUrl,
             body: payload,
