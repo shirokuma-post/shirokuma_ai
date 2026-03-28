@@ -181,7 +181,9 @@ export default function PostsPage() {
       const data = await res.json();
       if (res.ok) {
         setPostResult(`${data.generated}件のドラフトを生成しました！`);
-        fetchTodayDrafts();
+        await fetchTodayDrafts();
+        await fetchPosts(1);
+        fetchStats();
       } else {
         setPostResult("エラー: " + (data.error || "一括生成に失敗しました"));
       }

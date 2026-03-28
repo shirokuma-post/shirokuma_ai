@@ -57,11 +57,11 @@ export function Sidebar() {
     setLoggingOut(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      router.push("/auth/login");
     } catch {
-      // フォールバック: cookieを直接削除してリダイレクト
-      router.push("/auth/login");
+      // サーバー側のサインアウトが失敗しても続行
     }
+    // フルページリロードでcookieをクリアし、ミドルウェアのリダイレクトループを防ぐ
+    window.location.href = "/auth/login";
   }
 
   const sidebarContent = (

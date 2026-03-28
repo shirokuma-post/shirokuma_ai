@@ -152,10 +152,13 @@ export default function SchedulePage() {
   async function handleSave() {
     setSaving(true); setSaved(false);
     try {
+      // 保存前に時間順でソート
+      const sorted = [...slots].sort((a, b) => a.time.localeCompare(b.time));
+      setSlots(sorted);
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories }),
+        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
