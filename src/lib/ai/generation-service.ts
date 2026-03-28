@@ -107,7 +107,7 @@ export async function fetchUserGenerationContext(
     console.warn("[generation] Failed to fetch learning data:", err);
   }
 
-  // 4. 直近投稿（反復防止用）
+  // 4. 直近投稿（反復防止用）— posted のみ（draft含めるとバッチ内で干渉する）
   let recentPostContents: string[] = [];
   let recentPostTitles: string[] = [];
   try {
@@ -115,7 +115,7 @@ export async function fetchUserGenerationContext(
       .from("posts")
       .select("content, internal_title")
       .eq("user_id", userId)
-      .in("status", ["posted", "draft"])
+      .eq("status", "posted")
       .order("created_at", { ascending: false })
       .limit(10);
     if (rp?.length) {

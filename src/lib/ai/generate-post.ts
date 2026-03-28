@@ -475,15 +475,22 @@ function buildAntiRepetitionContext(recentPosts?: string[], recentTitles?: strin
   // タイトルがあればタイトルだけ使う（スタイルリーク防止）
   if (recentTitles && recentTitles.length > 0) {
     const titles = recentTitles.slice(0, 5);
-    return `\n【避けるテーマ】以下と同じテーマ・書き出し・構造は使わないこと:
-${titles.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+    return `\n\n【NG: 以下のテーマは既出。絶対に避けて全く別の切り口で書くこと】
+${titles.map((t, i) => `- ${t}`).join("\n")}
+※上記の文体・トーン・構造を真似しないこと。完全に新しい視点で書く。`;
   }
-  // タイトルがない場合はトピックキーワードだけ抽出
+  // タイトルがない場合はキーワードだけ抽出（生テキストは渡さない）
   if (!recentPosts || recentPosts.length === 0) return "";
   const recent = recentPosts.slice(0, 5);
-  // 生テキストは渡さず、最初の20文字だけヒントとして使う
-  return `\n【避けるテーマ】以下と同じテーマ・書き出し・構造は使わないこと:
-${recent.map((p, i) => `${i + 1}. 「${p.slice(0, 20)}…」`).join("\n")}`;
+  // 内容からキーワードだけ抽出（冒頭文は文体リークするので避ける）
+  const keywords = recent.map(p => {
+    // 名詞的なキーワードを抽出（最初の15文字からカギカッコ・句読点を除去）
+    return p.slice(0, 15).replace(/[「」『』、。！？\n…]/g, "").trim();
+  }).filter(k => k.length > 0);
+  if (keywords.length === 0) return "";
+  return `\n\n【NG: 以下のキーワード周辺のテーマは既出。全く別の話題で書くこと】
+${keywords.map(k => `- ${k}`).join("\n")}
+※上記と似た書き出し・構造・トーンにならないよう注意。新鮮な視点で。`;
 }
 
 // =====================================================
