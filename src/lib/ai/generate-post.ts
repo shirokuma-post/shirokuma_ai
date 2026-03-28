@@ -148,20 +148,18 @@ export const DEFAULT_VOICE_PROFILE: VoiceProfile = {
 // =====================================================
 
 // 年齢の描写テンプレート
-const AGE_DESC: Record<string, { trait: string; speech: string; example: string }> = {
+// ★ 年齢は「人格・視点・エネルギー」を定義する。口調・語彙は品格(elegance)が決める。
+const AGE_DESC: Record<string, { trait: string; example: string }> = {
   young: {
-    trait: "20代前半。勢いで生きてる。経験は浅いけど感度と瞬発力が高い。深く考えるより先に感じる。テンポが速い",
-    speech: "「マジで」「ヤバい」「〜じゃん」「〜なんだけど！」。短文でポンポン畳みかける。長い説明はしない",
+    trait: "20代前半。勢いで生きてる。経験は浅いけど感度と瞬発力が高い。深く考えるより先に感じる。テンポが速い。文章は短くポンポン進む",
     example: "「え待って、これ知らなかったの俺だけ？ マジで損してたんだけど」",
   },
   middle: {
-    trait: "30〜40代。酸いも甘いも知ってる。偉そうにはしないけど、ちゃんと自分の意見がある。地に足がついてる",
-    speech: "落ち着いてるけど堅くない。大人の余裕がある言い回し。「〜なんだよね」「〜だと思うんだ」",
+    trait: "30〜40代。酸いも甘いも知ってる。偉そうにはしないけど、ちゃんと自分の意見がある。地に足がついてる。落ち着きはあるが堅くない",
     example: "「最近ふと思ったんだけど、あれって意外と大事だったんだな」",
   },
   old: {
-    trait: "50代以上。急がない。達観してる。人生を振り返る視点が自然に出る。説得力は経験から来る",
-    speech: "「昔はね」「歳をとるとわかるんだが」「若い頃は〜」。テンポがゆっくり。一文が長くなりがち。噛み締めるように書く",
+    trait: "50代以上。急がない。達観してる。人生を振り返る視点が自然に出る。説得力は経験から来る。テンポはゆっくり。噛み締めるように語る",
     example: "「若い頃はわからなかったが、あれは結局そういうことだったんだな。今ならわかる」",
   },
 };
@@ -253,10 +251,9 @@ ${distDesc.role}。${distDesc.stance}。
 ${ageDesc.trait}。
 ${toxDesc.trait}。
 
-【あなたの話し方（これが最優先）】
+【あなたの話し方（これが最優先。品格設定が口調の全てを決める）】
 ${eleDesc.trait}。
-${eleDesc.speech}。
-${ageDesc.speech}。`;
+${eleDesc.speech}。`;
 
   // --- 具体的な制約 ---
   const parts: string[] = [];
@@ -332,12 +329,11 @@ ${ageDesc.speech}。`;
     parts.push(`口癖「${vp.customPhrases.trim()}」を投稿中に2〜3回自然に混ぜる。`);
   }
 
-  // --- 参考例文（最も効果的な部分）---
+  // --- 参考例文（品格の例文を最後=最強にする）---
   const examples: string[] = [];
-  examples.push(`このキャラの投稿例: ${ageDesc.example}`);
   examples.push(`OKな表現: ${toxDesc.example_good}`);
   examples.push(`NGな表現: ${toxDesc.example_bad}`);
-  examples.push(`口調の参考: ${eleDesc.example}`);
+  examples.push(`口調はこれを真似すること: ${eleDesc.example}`);
 
   const voiceDirective = `【話し方のルール】
 ${parts.join("\n")}
