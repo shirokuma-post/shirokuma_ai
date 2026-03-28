@@ -35,10 +35,16 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { content, platform, metrics, aiProvider, aiApiKey } = body;
+    const { content, platform, metrics, aiProvider, aiApiKey, sourceType, sourceAccount } = body;
 
     if (!content?.trim()) {
       return NextResponse.json({ error: "投稿内容を入力してください" }, { status: 400 });
+    }
+
+    // 他者投稿はBusinessプラン限定
+    const isOthers = sourceType === "others";
+    if (isOthers && profile.plan !== "business") {
+      return NextResponse.json({ error: "他者投稿の学習はBusinessプランで利用できます" }, { status: 403 });
     }
 
     // AI analysis (optional - only if API key provided)
@@ -60,6 +66,8 @@ export async function POST(request: Request) {
         platform: platform || "x",
         metrics: metrics || {},
         ai_analysis: aiAnalysis,
+        source_type: isOthers ? "others" : "own",
+        ...(isOthers && sourceAccount ? { source_account: sourceAccount.trim() } : {}),
       })
       .select()
       .single();

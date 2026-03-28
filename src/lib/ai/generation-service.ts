@@ -82,7 +82,7 @@ export async function fetchUserGenerationContext(
   try {
     const { data: lp } = await supabase
       .from("learning_posts")
-      .select("content, ai_analysis")
+      .select("content, ai_analysis, source_type, source_account")
       .eq("user_id", userId);
     if (lp?.length) learningContext = buildLearningContext(lp);
   } catch (err) {
