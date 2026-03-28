@@ -50,16 +50,15 @@ async function handler(request: Request) {
       return NextResponse.json({ message: "No drafts to post", posted: 0, time: currentTime });
     }
 
-    // 2. Filter drafts matching current time (within 5 min window)
+    // 2. Filter drafts: scheduled_at が現在時刻の -15分 ～ +4分 の範囲内のみ
+    //    過去15分超のドラフトは一斉投稿を防ぐためスキップ
+    const nowMs = now.getTime();
     const dueDrafts = drafts.filter((draft: any) => {
       if (!draft.scheduled_at) return false;
-      const scheduledDate = new Date(draft.scheduled_at);
-      const scheduledJst = new Date(scheduledDate.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-      const sh = scheduledJst.getHours();
-      const sm = scheduledJst.getMinutes();
-      const [ch, cm] = currentTime.split(":").map(Number);
-      const diff = Math.abs(sh * 60 + sm - (ch * 60 + cm));
-      return diff <= 4;
+      const scheduledMs = new Date(draft.scheduled_at).getTime();
+      const diffMin = (nowMs - scheduledMs) / 60_000;
+      // 予定時刻の4分前〜15分後の範囲のみ対象
+      return diffMin >= -4 && diffMin <= 15;
     });
 
     if (dueDrafts.length === 0) {

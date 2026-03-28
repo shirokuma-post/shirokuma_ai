@@ -32,6 +32,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  // 冪等性チェック: 同じイベントの重複処理を防止
+  const { data: existing } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .select("event_id")
+    .eq("event_id", event.id)
+    .single();
+
+  if (existing) {
+    console.log(`Webhook event already processed: ${event.id}`);
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  // イベントを記録（処理前に記録して重複を防ぐ）
+  await supabaseAdmin
+    .from("stripe_webhook_events")
+    .insert({ event_id: event.id, event_type: event.type });
+
   try {
     switch (event.type) {
       // サブスクリプション作成・更新

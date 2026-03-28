@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
-import { canPost, type PlanId } from "@/lib/plans";
+import { canPost, getPostLimit, type PlanId } from "@/lib/plans";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { isUrlSafe } from "@/lib/url-validation";
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +13,11 @@ export async function POST(request: Request) {
 
     if (!text) {
       return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
+    }
+
+    // 画像URLのSSRF防止チェック
+    if (imageUrl && !isUrlSafe(imageUrl)) {
+      return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
     }
 
     // 外部から credentials が渡された場合はそのまま使う（cron からの呼び出し用）
@@ -26,14 +33,34 @@ export async function POST(request: Request) {
       }
       authUserId = authUser.id;
 
-      // プラン上限チェック
+      // レートリミット: 1分に5回まで
+      const rl = checkRateLimit(`post:${authUser.id}`, 5, 60_000);
+      if (!rl.allowed) {
+        return NextResponse.json(
+          { error: "リクエストが多すぎます。少し待ってからお試しください。" },
+          { status: 429 },
+        );
+      }
+
+      // 日次リセット + プラン上限チェック（アトミック）
       const { data: profile } = await supabase
         .from("profiles")
-        .select("plan, daily_post_count")
+        .select("plan, daily_post_count, daily_reset_at")
         .eq("id", authUser.id)
         .single();
       const plan = (profile?.plan || "free") as PlanId;
-      const dailyCount = profile?.daily_post_count || 0;
+
+      // 日次リセット（ダッシュボード以外からも対応）
+      const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" })).toISOString().split("T")[0];
+      let dailyCount = profile?.daily_post_count || 0;
+      if (profile && profile.daily_reset_at !== today) {
+        await supabase
+          .from("profiles")
+          .update({ daily_post_count: 0, daily_reset_at: today })
+          .eq("id", authUser.id);
+        dailyCount = 0;
+      }
+
       if (!canPost(plan, dailyCount)) {
         return NextResponse.json(
           { error: "本日の投稿上限に達しました。プランをアップグレードするか、明日お試しください。" },
@@ -120,10 +147,19 @@ export async function POST(request: Request) {
           sns_post_ids: { [provider]: resultData },
           error_message: isSuccess ? null : (resultData.error || null),
         });
-        // 投稿成功時にdaily_post_countをインクリメント
+        // 投稿成功時にdaily_post_countをアトミックにインクリメント
         if (isSuccess) {
-          const { data: p } = await supabase.from("profiles").select("daily_post_count").eq("id", authUserId).single();
-          await supabase.from("profiles").update({ daily_post_count: (p?.daily_post_count || 0) + 1 }).eq("id", authUserId);
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("plan")
+            .eq("id", authUserId)
+            .single();
+          const userPlan = (profile?.plan || "free") as PlanId;
+          const planLimit = getPostLimit(userPlan);
+          await supabase.rpc("increment_daily_post_count", {
+            p_user_id: authUserId,
+            p_plan_limit: planLimit,
+          });
         }
       } catch (dbErr) {
         console.warn("Post DB save failed (non-fatal):", dbErr);
