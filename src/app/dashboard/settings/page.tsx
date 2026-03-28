@@ -49,6 +49,8 @@ export default function SettingsPage() {
   const [savingStyle, setSavingStyle] = useState(false);
   const [savedStyle, setSavedStyle] = useState(false);
   const [defaultTrendCategories, setDefaultTrendCategories] = useState<string[]>(["general", "technology", "business"]);
+  const [localArea, setLocalArea] = useState("");
+  const [localAreaSaved, setLocalAreaSaved] = useState(false);
   const [testGenerating, setTestGenerating] = useState(false);
   const [testResult, setTestResult] = useState("");
   const [testSns, setTestSns] = useState<"x" | "threads">("x");
@@ -72,14 +74,17 @@ export default function SettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [phRes, keyRes, styleRes] = await Promise.all([
+        const [phRes, keyRes, styleRes, schedRes] = await Promise.all([
           fetch("/api/philosophy"),
           fetch("/api/apikeys"),
           fetch("/api/style-defaults"),
+          fetch("/api/schedule"),
         ]);
         const phData = await phRes.json();
         const keyData = await keyRes.json();
         const styleData = await styleRes.json();
+        const schedData = await schedRes.json();
+        if (schedData.config?.local_area) setLocalArea(schedData.config.local_area);
         if (styleData.defaults) {
           setPostStyle(styleData.defaults.style || "mix");
           setCustomStyles(styleData.defaults.customStyles || []);
@@ -783,6 +788,43 @@ export default function SettingsPage() {
                     )}
                   </div>
                 </div>
+
+                {/* ローカルエリア */}
+                {userPlan === "business" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">ローカルエリア（地域トレンド）</label>
+                    <p className="text-xs text-gray-400 mb-2">設定した地域のニュースを投稿ネタに参照します（Schedule画面と連動）</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={localArea}
+                        onChange={(e) => { setLocalArea(e.target.value); setLocalAreaSaved(false); }}
+                        placeholder="例: 横浜、渋谷、福岡"
+                        className="w-48 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/schedule");
+                            const data = await res.json();
+                            const config = data.config || {};
+                            await fetch("/api/schedule", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ ...config, local_area: localArea }),
+                            });
+                            setLocalAreaSaved(true);
+                            setTimeout(() => setLocalAreaSaved(false), 2000);
+                          } catch {}
+                        }}
+                        className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors"
+                      >
+                        保存
+                      </button>
+                      {localAreaSaved && <span className="text-xs text-green-600">保存しました</span>}
+                    </div>
+                  </div>
+                )}
 
                 {/* デフォルトトレンドカテゴリ（Business限定） */}
                 {userPlan === "business" && (
