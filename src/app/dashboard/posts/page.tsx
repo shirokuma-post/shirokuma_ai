@@ -91,6 +91,7 @@ export default function PostsPage() {
   const [togglingAutoPost, setTogglingAutoPost] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
   const [needsRegistration, setNeedsRegistration] = useState(false);
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
 
   // 承認待ち (legacy support)
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
@@ -243,13 +244,19 @@ export default function PostsPage() {
 
   async function handleSaveDraftEdit(postId: string) {
     try {
-      await fetch(`/api/posts/${postId}`, {
+      const res = await fetch(`/api/posts/${postId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editDraftText }),
       });
-      setEditingDraft(null);
-      fetchTodayDrafts();
+      if (res.ok) {
+        setEditingDraft(null);
+        // ローカルで即反映（APIレスポンスを待たずにUI更新）
+        setTodayDrafts((prev) => prev.map((d) => d.id === postId ? { ...d, content: editDraftText } : d));
+        // 保存フィードバック
+        setSavedDraftId(postId);
+        setTimeout(() => setSavedDraftId(null), 2000);
+      }
     } catch {}
   }
 
@@ -384,6 +391,24 @@ export default function PostsPage() {
         </div>
       </div>
 
+      {/* ========== 登録バナー ========== */}
+      {needsRegistration && (
+        <div className="mb-6 p-4 bg-amber-50 border-2 border-amber-400 rounded-xl shadow-md animate-pulse-once">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">⚠️</span>
+              <div>
+                <p className="text-sm font-bold text-amber-900">ドラフトが未登録です</p>
+                <p className="text-xs text-amber-700 mt-0.5">内容を確認・編集したら「登録する」を押してください。登録しないと自動投稿されません。</p>
+              </div>
+            </div>
+            <Button size="sm" onClick={handleRegister} disabled={registering} className="bg-green-600 hover:bg-green-700 text-white shrink-0 px-6 py-2 shadow-sm">
+              {registering ? "登録中..." : "登録する"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* ========== 今日のスロット（ドラフト一覧） ========== */}
       <Card className="mb-6 border-brand-200">
         <CardHeader>
@@ -392,21 +417,14 @@ export default function PostsPage() {
               <h2 className="font-semibold text-gray-900">今日のスロット</h2>
               {todayDrafts.length > 0 && <span className="text-xs px-2 py-0.5 bg-brand-50 text-brand-700 rounded-full">{todayDrafts.length}件</span>}
             </div>
-            <div className="flex items-center gap-2">
-              {needsRegistration && (
-                <Button size="sm" onClick={handleRegister} disabled={registering} className="bg-green-600 hover:bg-green-700 text-white">
-                  {registering ? "登録中..." : "登録する"}
-                </Button>
-              )}
-              <Button size="sm" onClick={handleBatchGenerate} disabled={batchGenerating} variant={needsRegistration ? "ghost" : undefined}>
-                {batchGenerating ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                    生成中...
-                  </span>
-                ) : todayDrafts.length > 0 ? "再生成" : "一括生成"}
-              </Button>
-            </div>
+            <Button size="sm" onClick={handleBatchGenerate} disabled={batchGenerating}>
+              {batchGenerating ? (
+                <span className="flex items-center gap-2">
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  生成中...
+                </span>
+              ) : todayDrafts.length > 0 ? "再生成" : "一括生成"}
+            </Button>
           </div>
           <p className="text-xs text-gray-400 mt-1">
             {needsRegistration
@@ -444,6 +462,7 @@ export default function PostsPage() {
                           {draft.scheduled_at ? formatTime(draft.scheduled_at) : "--:--"}
                         </span>
                         {isExpired && draft.status === "draft" && <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded">時間外</span>}
+                        {savedDraftId === draft.id && <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full animate-pulse">保存しました</span>}
                         {getSnsLabel(draft.sns_target)}
                         <span className="text-xs text-gray-500">{styleLabel}</span>
                       </div>
