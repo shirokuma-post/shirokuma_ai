@@ -325,7 +325,7 @@ export default function PostsPage() {
 
   const isMultiSns = planLevel(userPlan) >= 2;
   const canUseSplit = planLevel(userPlan) >= 2;
-  const FREE_STYLE_IDS = ["mix", "paradigm_break", "boyaki", "yueki", "kyoukan"];
+  const FREE_STYLE_IDS = ["mix", "honne", "kizuki", "hitokoto"];
   const allowedStyleOptions = planLevel(userPlan) >= 1 ? STYLE_OPTIONS : STYLE_OPTIONS.filter(s => FREE_STYLE_IDS.includes(s.id));
 
   const isX = snsTab === "x";

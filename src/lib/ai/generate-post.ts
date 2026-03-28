@@ -505,13 +505,14 @@ interface GenerateOptions {
   customPrompt?: string;
   learningContext?: string;
   recentPosts?: string[];
+  recentTitles?: string[];
   customStylePrompt?: string;
 }
 
 // 方言指示はbuildVoicePromptに統合済み。個別のリマインダーは不要。
 
 export function buildPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customPrompt, learningContext, recentPosts, customStylePrompt } = options;
+  const { philosophy, style, timeOfDay, postLength = "standard", voiceProfile, snsTarget, customPrompt, learningContext, recentPosts, recentTitles, customStylePrompt } = options;
 
   // ai_optimized: 学習データが主軸、スタイルはAIが自動選択
   if (style === "ai_optimized") {
@@ -527,7 +528,7 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
-  const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   // プロンプト構造: 優先度順に配置（上が最優先）
   // キャラクター遵守リマインダーを生成
@@ -570,13 +571,13 @@ ${characterReminder}`;
 }
 
 function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, timeOfDay, postLength = "standard", voiceProfile, snsTarget, learningContext, recentPosts } = options;
+  const { philosophy, timeOfDay, postLength = "standard", voiceProfile, snsTarget, learningContext, recentPosts, recentTitles } = options;
 
   const lengthConfig = LENGTH_CONFIGS[postLength];
   const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const philosophyContext = getPhilosophyContext(philosophy);
-  const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   const hasLearning = learningContext && learningContext.trim().length > 0;
 
@@ -628,7 +629,7 @@ ${buildCharacterReminder(vp)}`;
 // 分割投稿（フック → リプライ）— 好奇心ギャップ式
 // =====================================================
 export function buildSplitPrompt(options: GenerateOptions): { system: string; user: string } {
-  const { philosophy, style, timeOfDay, voiceProfile, snsTarget, customPrompt, recentPosts, customStylePrompt } = options;
+  const { philosophy, style, timeOfDay, voiceProfile, snsTarget, customPrompt, recentPosts, recentTitles, customStylePrompt } = options;
   const actualStyle = style === "mix"
     ? RANDOM_STYLES[Math.floor(Math.random() * RANDOM_STYLES.length)]
     : style;
@@ -637,7 +638,7 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
   const philosophyContext = getPhilosophyContext(philosophy);
-  const antiRepetition = buildAntiRepetitionContext(recentPosts);
+  const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   // フックのバリエーション（毎回ランダムで1つ選ぶ）
   const hookVariations = [

@@ -4,10 +4,12 @@ import { createServerSupabase } from "@/lib/supabase/server";
 export interface ScheduleSlot {
   time: string;       // "09:00"
   target: "x" | "threads";
-  style: string;      // "mix" | "paradigm_break" | etc.
+  style: string;      // "mix" | "kizuki" | "hitokoto" | etc.
   character: string;  // "none" | "gal" | etc.
   length: string;     // "short" | "standard" | "long"
   split: boolean;
+  useTrend?: boolean;
+  theme?: string;
 }
 
 export async function GET() {
