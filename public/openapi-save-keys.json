@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://shirokuma-post.vercel.app"
+      "url": "https://shirokumapos.vercel.app"
     }
   ],
   "paths": {
@@ -42,7 +42,7 @@
                         },
                         "key_name": {
                           "type": "string",
-                          "description": "キーの識別名（例: api_key, api_secret, access_token, access_secret, app_id, app_secret）"
+                          "description": "キーの識別名（例: api_key, consumer_key, consumer_secret, access_token, access_token_secret, user_id）"
                         },
                         "value": {
                           "type": "string",

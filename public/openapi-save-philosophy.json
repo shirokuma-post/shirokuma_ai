@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://shirokuma-post.vercel.app"
+      "url": "https://shirokumapos.vercel.app"
     }
   ],
   "paths": {
