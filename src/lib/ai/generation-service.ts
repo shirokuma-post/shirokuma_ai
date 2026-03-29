@@ -183,7 +183,7 @@ export async function fetchTrendContext(
         .slice(0, 5)
         .map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`)
         .join("\n");
-      parts.push(`【参考】本日のトレンド（自然に関連する場合のみ取り入れる。無理に絡めない）:\n${list}`);
+      parts.push(`【トレンド素材】以下から、Layer 1（信念・情熱）× Layer 2（切り口・スタンス）で語れるものがあれば、その視点で切り込む。関連しないトレンドは無視してよい:\n${list}`);
     }
   } catch (err) {
     console.warn("[generation] Failed to fetch trends:", err);
@@ -203,7 +203,7 @@ export async function fetchTrendContext(
         const list = localTrends
           .map((t: any, i: number) => `${i + 1}. ${t.title}${t.summary ? ": " + t.summary : ""}`)
           .join("\n");
-        parts.push(`【地域の話題】（地元ネタとして自然に使える場合のみ。無理に絡めない）:\n${list}`);
+        parts.push(`【地域の話題】以下の地元ネタも、想いの切り口で語れるなら活用する:\n${list}`);
       }
     } catch (err) {
       console.warn("[generation] Failed to fetch local trends:", err);
