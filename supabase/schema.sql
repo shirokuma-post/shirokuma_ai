@@ -83,7 +83,7 @@ CREATE TABLE public.posts (
   content TEXT NOT NULL,
   style_used TEXT,                -- nullable: 手動投稿では未設定の場合あり
   status TEXT NOT NULL DEFAULT 'draft'
-    CHECK (status IN ('draft', 'scheduled', 'posted', 'failed', 'pending_approval')),
+    CHECK (status IN ('draft', 'scheduled', 'posted', 'failed', 'pending_approval', 'posting', 'sending')),
   scheduled_at TIMESTAMPTZ,
   posted_at TIMESTAMPTZ,
   sns_post_ids JSONB,             -- { "x": {...}, "threads": {...} }
@@ -94,7 +94,9 @@ CREATE TABLE public.posts (
   slot_index INTEGER,             -- スロット番号（0-indexed）
   slot_config JSONB,              -- 生成時のスロット設定を保持
   image_url TEXT,                 -- 画像付き投稿用（Supabase Storage公開URL）
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  internal_title TEXT,            -- AI生成タイトル（内部管理用）
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_posts_user ON public.posts(user_id, created_at DESC);

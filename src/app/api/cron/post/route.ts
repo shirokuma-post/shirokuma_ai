@@ -22,13 +22,13 @@ async function handler(request: Request) {
 
     console.log(`[CRON/POST] Running at JST ${currentTime} (${todayStr})`);
 
-    // 0. "posting"/"sending" のまま1時間以上放置された投稿を "draft" に戻す（自動復旧）
+    // 0. "posting"/"sending" のまま予定時刻から1時間以上経過した投稿を "draft" に戻す（自動復旧）
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     const { data: stuckPosts } = await supabase
       .from("posts")
       .update({ status: "draft", error_message: "posting/sending状態タイムアウト — 自動復旧" })
       .in("status", ["posting", "sending"])
-      .lt("updated_at", oneHourAgo)
+      .lt("scheduled_at", oneHourAgo)
       .eq("auto_post", true)
       .select("id");
     if (stuckPosts?.length) {
@@ -55,8 +55,8 @@ async function handler(request: Request) {
       if (!draft.scheduled_at) return false;
       const scheduledMs = new Date(draft.scheduled_at).getTime();
       const diffMin = (nowMs - scheduledMs) / 60_000;
-      // 予定時刻の4分前〜15分後の範囲のみ対象
-      return diffMin >= -4 && diffMin <= 15;
+      // 予定時刻の4分前〜30分後の範囲のみ対象
+      return diffMin >= -4 && diffMin <= 30;
     });
 
     if (dueDrafts.length === 0) {
