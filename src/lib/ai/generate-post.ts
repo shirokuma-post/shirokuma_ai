@@ -436,38 +436,64 @@ export function parseStructuredSummary(summary: string | null): StructuredSummar
   }
 }
 
-function buildStructuredContext(s: StructuredSummary): string {
-  const sections: string[] = [];
+// Layer 1: 軸（全投稿で一貫。崩さない）— 情熱 / ビジョン / 信念
+// Layer 2: 表現（テーマ×スタイル×トレンドで変化）— 切り口 / スタンス
+// Layer 3: 深層（本音・物語スタイル限定の切り札）— 原体験
+const LAYER3_STYLES: PostStyle[] = ["honne", "monogatari"];
 
-  // 信念（新）or 公理（旧）
-  const belief = s.belief || s.axiom;
-  if (belief) sections.push(`信念: ${belief}`);
+function buildLayeredContext(s: StructuredSummary, style: PostStyle): string {
+  const parts: string[] = [];
 
-  // 原体験（新）or 理論構造（旧）
-  const origin = s.origin || s.structure;
-  if (origin) sections.push(`原体験: ${origin}`);
-
-  // 情熱（新）or ロジック（旧）
+  // --- Layer 1: 軸（崩さない上位概念）---
   const passion = s.passion || s.logic;
-  if (passion) sections.push(`情熱: ${passion}`);
-
-  // 武器
-  if (s.weapons?.length) sections.push(`切り口: ${s.weapons.join("、")}`);
-
-  // スタンス
-  if (s.stance) sections.push(`スタンス: ${s.stance}`);
-
-  // ビジョン（新）or メソッド（旧）
   const vision = s.vision || s.method;
-  if (vision) sections.push(`ビジョン: ${vision}`);
+  const belief = s.belief || s.axiom;
 
-  return sections.join("\n");
+  const layer1: string[] = [];
+  if (passion) layer1.push(`【情熱】${passion}`);
+  if (vision) layer1.push(`【ビジョン】${vision}`);
+  if (belief) layer1.push(`【信念】${belief}`);
+
+  if (layer1.length > 0) {
+    parts.push(`■ Layer 1: 軸（この人の核。全投稿で一貫させる。崩さない）
+${layer1.join("\n")}
+→ 投稿のテーマ選び・結論は、必ずこの軸に立ち返ること。
+→ どのスタイル・どのトレンドでも、この軸と矛盾する主張はしない。`);
+  }
+
+  // --- Layer 2: 表現（スタイルやテーマで変化する武器）---
+  const layer2: string[] = [];
+  if (s.weapons?.length) layer2.push(`【切り口】${s.weapons.join(" / ")}`);
+  if (s.stance) layer2.push(`【スタンス】${s.stance}`);
+
+  if (layer2.length > 0) {
+    parts.push(`■ Layer 2: 表現（軸をベースに、テーマやスタイルで変化させる）
+${layer2.join("\n")}
+→ 切り口: テーマの攻め方・フレーミングに使う。毎回違う切り口を選ぶ。
+→ スタンス: 何を否定し何を肯定するかの軸。「この人にはブレない軸がある」と感じさせる。`);
+  }
+
+  // --- Layer 3: 深層（本音・物語スタイル限定）---
+  const origin = s.origin || s.structure;
+  if (origin && LAYER3_STYLES.includes(style)) {
+    parts.push(`■ Layer 3: 深層（このスタイルでのみ使える切り札）
+【原体験】${origin}
+→ エピソードや「なぜ？」の裏付けとして使う。毎回出すと重いので、ここぞという時に。`);
+  }
+
+  // 使い方ルール
+  parts.push(`■ 使い方ルール
+- 1投稿にLayer1の1〜2要素が自然ににじめばOK。全部入れようとしない。
+- 直接「私の信念は〜」と語るのではなく、具体的な話題を通して感じさせる。
+- 読者が「この人にはブレない何かがある」と感じる投稿にする。`);
+
+  return parts.join("\n\n");
 }
 
-function getPhilosophyContext(philosophy: Philosophy): string {
+function getPhilosophyContext(philosophy: Philosophy, style: PostStyle = "mix"): string {
   const structured = parseStructuredSummary(philosophy.summary);
   if (structured) {
-    return buildStructuredContext(structured);
+    return buildLayeredContext(structured, style);
   }
   // 非構造化: summaryがあればsummary、なければcontentの先頭1000文字
   const content = philosophy.summary || philosophy.content.slice(0, 1000);
@@ -540,11 +566,10 @@ export function buildPrompt(options: GenerateOptions): { system: string; user: s
   const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
-  const philosophyContext = getPhilosophyContext(philosophy);
+  const philosophyContext = getPhilosophyContext(philosophy, actualStyle);
   const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   // プロンプト構造: 優先度順に配置（上が最優先）
-  // キャラクター遵守リマインダーを生成
   const characterReminder = buildCharacterReminder(vp);
 
   const system = `${basePrompt}
@@ -561,7 +586,7 @@ ${stylePrompt}
 トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
-=== 4. 想い（直接語らず、にじみ出るように）===
+=== 4. この人の想い（投稿の核。ここから全てが始まる）===
 ${philosophyContext}
 
 === 5. 文体ルール ===
@@ -589,7 +614,7 @@ function buildAiOptimizedPrompt(options: GenerateOptions): { system: string; use
   const lengthConfig = LENGTH_CONFIGS[postLength];
   const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
-  const philosophyContext = getPhilosophyContext(philosophy);
+  const philosophyContext = getPhilosophyContext(philosophy, "ai_optimized");
   const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   const hasLearning = learningContext && learningContext.trim().length > 0;
@@ -613,7 +638,7 @@ ${learningContext}` : `以下から最もエンゲージメントが高くなる
 トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
-=== 4. 想い（直接語らず、にじみ出るように）===
+=== 4. この人の想い（投稿の核。ここから全てが始まる）===
 ${philosophyContext}
 
 === 5. 文体ルール ===
@@ -650,7 +675,7 @@ export function buildSplitPrompt(options: GenerateOptions): { system: string; us
   const vp = voiceProfile || DEFAULT_VOICE_PROFILE;
   const { basePrompt, voiceDirective } = buildVoicePrompt(vp);
   const stylePrompt = customStylePrompt || STYLE_PROMPTS[actualStyle] || "";
-  const philosophyContext = getPhilosophyContext(philosophy);
+  const philosophyContext = getPhilosophyContext(philosophy, actualStyle);
   const antiRepetition = buildAntiRepetitionContext(recentPosts, recentTitles);
 
   // フックのバリエーション（毎回ランダムで1つ選ぶ）
@@ -684,7 +709,7 @@ JSON以外のテキストは一切出力しないこと。
 ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
-=== 5. 想い（直接語らず、にじみ出るように）===
+=== 5. この人の想い（投稿の核。ここから全てが始まる）===
 ${philosophyContext}
 
 === 6. 文体ルール ===
