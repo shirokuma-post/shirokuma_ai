@@ -7,7 +7,7 @@ export interface XCredentials {
   accessTokenSecret: string;
 }
 
-function generateOAuthSignature(
+export function generateOAuthSignature(
   method: string,
   url: string,
   params: Record<string, string>,

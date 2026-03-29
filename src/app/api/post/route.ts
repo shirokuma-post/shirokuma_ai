@@ -5,6 +5,8 @@ import { decrypt } from "@/lib/crypto";
 import { canPost, getPostLimit, type PlanId } from "@/lib/plans";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isUrlSafe } from "@/lib/url-validation";
+import { buildOAuthHeader, generateOAuthSignature, type XCredentials } from "@/lib/sns/x-auth";
+import { verifyCronSecret } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
@@ -20,10 +22,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
     }
 
-    // 外部から credentials が渡された場合はそのまま使う（cron からの呼び出し用）
+    // 外部から credentials が渡された場合はCRON_SECRET認証が必要（cron/workerからの呼び出し用）
     // そうでなければ認証ユーザーのキーをDBから取得
     let credentials = externalCreds;
     let authUserId: string | null = null;
+
+    if (externalCreds) {
+      // 外部credentials利用時はCRON_SECRET or QStash署名が必要
+      if (!verifyCronSecret(request.headers.get("authorization"))) {
+        return NextResponse.json({ error: "Unauthorized: external credentials require CRON_SECRET" }, { status: 401 });
+      }
+    }
 
     if (!credentials) {
       const supabase = createServerSupabase();
@@ -174,21 +183,6 @@ export async function POST(request: Request) {
 }
 
 // ---------- X posting ----------
-function generateOAuthSignature(method: string, url: string, params: Record<string, string>, consumerSecret: string, tokenSecret: string): string {
-  const sortedParams = Object.keys(params).sort().map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join("&");
-  const baseString = [method.toUpperCase(), encodeURIComponent(url), encodeURIComponent(sortedParams)].join("&");
-  const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`;
-  return crypto.createHmac("sha1", signingKey).update(baseString).digest("base64");
-}
-
-function buildOAuthHeader(method: string, url: string, creds: { consumerKey: string; consumerSecret: string; accessToken: string; accessTokenSecret: string }): string {
-  const nonce = crypto.randomBytes(16).toString("hex");
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const oauthParams: Record<string, string> = { oauth_consumer_key: creds.consumerKey, oauth_nonce: nonce, oauth_signature_method: "HMAC-SHA1", oauth_timestamp: timestamp, oauth_token: creds.accessToken, oauth_version: "1.0" };
-  oauthParams.oauth_signature = generateOAuthSignature(method, url, oauthParams, creds.consumerSecret, creds.accessTokenSecret);
-  return "OAuth " + Object.keys(oauthParams).sort().map((k) => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`).join(", ");
-}
-
 // X media upload (v1.1 endpoint, OAuth 1.0a required)
 async function uploadMediaToX(creds: any, imageUrl: string): Promise<string | null> {
   try {
