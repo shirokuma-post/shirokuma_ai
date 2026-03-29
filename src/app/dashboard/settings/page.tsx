@@ -158,6 +158,7 @@ export default function SettingsPage() {
         { key_name: "access_token_secret", value: xKeys.accessTokenSecret },
       ];
       let allOk = true;
+      let lastVerification: any = null;
       for (const k of keys) {
         if (k.value.trim()) {
           const res = await fetch("/api/apikeys", {
@@ -166,9 +167,23 @@ export default function SettingsPage() {
             body: JSON.stringify({ provider: "x", key_name: k.key_name, value: k.value }),
           });
           if (!res.ok) { allOk = false; console.error("X key save failed:", k.key_name, await res.text()); }
+          else {
+            const data = await res.json();
+            if (data.verification) lastVerification = data.verification;
+          }
         }
       }
       if (!allOk) { alert("X APIキーの保存に失敗しました。設定を確認してください。"); setSavingX(false); return; }
+
+      // 検証結果を表示
+      if (lastVerification) {
+        if (lastVerification.valid) {
+          alert(`X API接続テスト成功！ アカウント: @${lastVerification.username}`);
+        } else {
+          alert(`X API接続テスト失敗: ${lastVerification.error}\n\nキーは保存されましたが、投稿時にエラーになる可能性があります。`);
+        }
+      }
+
       setSavedX(true);
       setSavedKeys(prev => [...prev.filter(k => !k.startsWith("x:")), "x:consumer_key", "x:consumer_secret", "x:access_token", "x:access_token_secret"]);
       setXKeys({ consumerKey: "", consumerSecret: "", accessToken: "", accessTokenSecret: "" });
