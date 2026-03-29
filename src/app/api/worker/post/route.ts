@@ -261,11 +261,11 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
 
   const draft = claimed;
 
-  // 時間ウィンドウガード: scheduled_at から15分以内のみ投稿
+  // 時間ウィンドウガード: scheduled_at から30分以内のみ投稿
   const scheduledMs = new Date(draft.scheduled_at).getTime();
   const nowMs = Date.now();
   const diffMinutes = (nowMs - scheduledMs) / 60_000;
-  if (diffMinutes > 15) {
+  if (diffMinutes > 30) {
     console.log(`[WORKER] Skipping ${postId}: ${Math.round(diffMinutes)}min past scheduled time (${draft.scheduled_at})`);
     await supabase.from("posts").update({
       status: "failed",
