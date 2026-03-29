@@ -1,20 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-// ---------- Service client (bypasses RLS) ----------
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
-
-// =============================================================
-// RSS Trend Fetcher
-// Google News RSS からトレンドを取得し daily_trends に保存
-// Vercel Cron or QStash で 1日2〜3回実行を想定
-// =============================================================
-
+import { getServiceClient } from "@/lib/supabase/service";
+import { verifyCronRequest } from "@/lib/auth";
 import { TREND_CATEGORIES } from "@/lib/trend-categories";
 
 const RSS_FEEDS = Object.entries(TREND_CATEGORIES).map(([category, info]) => ({
@@ -56,12 +42,8 @@ function parseRssItems(xml: string): RssItem[] {
 }
 
 export async function GET(request: Request) {
-  // Auth
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authReject = verifyCronRequest(request);
+  if (authReject) return authReject;
 
   const supabase = getServiceClient();
 

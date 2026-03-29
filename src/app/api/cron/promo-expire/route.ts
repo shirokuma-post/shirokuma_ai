@@ -1,24 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-// ---------- Service client (bypasses RLS) ----------
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import { getServiceClient } from "@/lib/supabase/service";
+import { verifyCronRequest } from "@/lib/auth";
 
 // =============================================================
 // Promo Expire Cron
 // promo_expires_at を過ぎたユーザーを free プランにダウングレード
 // =============================================================
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authReject = verifyCronRequest(request);
+  if (authReject) return authReject;
 
   const supabase = getServiceClient();
   const now = new Date().toISOString();

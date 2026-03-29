@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { Client as QStashClient } from "@upstash/qstash";
-import { verifyCronSecret } from "@/lib/auth";
+import { getServiceClient } from "@/lib/supabase/service";
+import { verifyCronRequest } from "@/lib/auth";
 import {
   fetchUserGenerationContext,
   fetchTrendContext,
@@ -17,28 +17,18 @@ import {
   type PostStyle,
 } from "@/lib/ai/generation-service";
 
-// ---------- Service client (bypasses RLS) ----------
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-}
-
 // =============================================================
 // Batch Generator: 深夜一括生成 — 全ユーザー × 全スロットのドラフト作成
 // GET: Vercel Cron / POST: QStash Schedules
 // =============================================================
 async function handler(request: Request) {
-  const hasQStashSignature = request.headers.has("upstash-signature");
-  if (!hasQStashSignature && !verifyCronSecret(request.headers.get("authorization"))) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authReject = verifyCronRequest(request);
+  if (authReject) return authReject;
 
   try {
     const supabase = getServiceClient();
-    const jstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-    const todayStr = jstNow.toISOString().split("T")[0];
+    const { getTodayStr } = await import("@/lib/date-utils");
+    const todayStr = getTodayStr();
 
     console.log(`[BATCH-GENERATE] Starting batch generation for ${todayStr}`);
 

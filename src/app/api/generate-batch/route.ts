@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { Client as QStashClient } from "@upstash/qstash";
 import {
   fetchUserGenerationContext,
   fetchTrendContext,
@@ -36,8 +35,9 @@ export async function POST(request: Request) {
     if (slots.length === 0) return NextResponse.json({ error: "投稿スロットがありません。Schedule画面でスロットを追加してください。" }, { status: 400 });
 
     // 日付計算（JST）
-    const jstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-    const todayStr = jstNow.toISOString().split("T")[0];
+    const { getJstNow, getTodayStr } = await import("@/lib/date-utils");
+    const jstNow = getJstNow();
+    const todayStr = getTodayStr();
     const nowIso = new Date().toISOString();
 
     // 既存ドラフト削除（posting 状態も含む — 再生成時にQStash残骸を防ぐ）
@@ -140,51 +140,4 @@ export async function POST(request: Request) {
     console.error("[GENERATE-BATCH]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-// ---------- QStash遅延投稿スケジュール ----------
-async function scheduleQStashPosts(
-  posts: any[],
-  userId: string,
-): Promise<number> {
-  const qstashToken = process.env.QSTASH_TOKEN;
-  if (!qstashToken) return 0;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const workerUrl = `${appUrl}/api/worker/post`;
-  const qstash = new QStashClient({ token: qstashToken, baseUrl: process.env.QSTASH_URL || "https://qstash-us-east-1.upstash.io" });
-  let count = 0;
-
-  for (const post of posts) {
-    try {
-      const scheduledAt = post.scheduled_at;
-      if (!scheduledAt) continue;
-
-      const delayMs = new Date(scheduledAt).getTime() - Date.now();
-
-      if (delayMs <= 60000) {
-        // 過去 or 1分以内 → 即時配信（delay=0）
-        await qstash.publishJSON({
-          url: workerUrl,
-          body: { mode: "post-draft", draftPostId: post.id, userId },
-          retries: 2,
-        });
-        console.log(`[GENERATE-BATCH] QStash immediate for ${post.id} (past due: ${scheduledAt})`);
-      } else {
-        // 未来 → 遅延配信
-        await qstash.publishJSON({
-          url: workerUrl,
-          body: { mode: "post-draft", draftPostId: post.id, userId },
-          retries: 2,
-          delay: Math.floor(delayMs / 1000),
-        });
-        console.log(`[GENERATE-BATCH] QStash delayed for ${post.id} at ${scheduledAt} (${Math.floor(delayMs / 60000)}min)`);
-      }
-      count++;
-    } catch (err: any) {
-      console.error(`[GENERATE-BATCH] QStash failed for ${post.id}:`, err.message);
-    }
-  }
-
-  return count;
 }
