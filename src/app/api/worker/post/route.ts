@@ -253,9 +253,9 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     .select("*")
     .single();
 
-  // 取得できなかった → 既に別のworkerが処理中 or 削除済み
+  // 取得できなかった → 既に別のworkerが処理中 or 削除済み or CHECK制約違反
   if (claimError || !claimed) {
-    console.log(`[WORKER] Skipping ${postId}: already claimed by another worker or deleted`);
+    console.log(`[WORKER] Skipping ${postId}: claim failed (${claimError?.message || claimError?.code || "no rows returned"})`);
     return "skipped";
   }
 
