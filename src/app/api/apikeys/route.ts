@@ -14,7 +14,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("api_keys")
-    .select("id, provider, key_name, is_valid, last_verified_at, created_at")
+    .select("id, provider, key_name, is_valid, last_verified_at, created_at, updated_at")
     .eq("user_id", user.id);
 
   if (error) {

@@ -16,6 +16,9 @@ interface DashboardData {
     hasXKey: boolean;
     hasThreadsKey: boolean;
     hasSnsKey: boolean;
+    threadsTokenExpiresAt: string | null;
+    threadsTokenDaysLeft: number | null;
+    threadsAutoRefresh: boolean;
   };
   recentPosts: any[];
   totalPosts: number;
@@ -24,6 +27,8 @@ interface DashboardData {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [togglingAuto, setTogglingAuto] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -38,6 +43,54 @@ export default function DashboardPage() {
     }
     load();
   }, []);
+
+  async function handleRefreshToken() {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/threads/refresh-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh" }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        alert(json.message);
+        // データを再読み込み
+        const dashRes = await fetch("/api/dashboard");
+        const dashJson = await dashRes.json();
+        setData(dashJson);
+      } else {
+        alert(json.error || "トークンの更新に失敗しました");
+      }
+    } catch (e: any) {
+      alert("エラー: " + e.message);
+    }
+    setRefreshing(false);
+  }
+
+  async function handleToggleAutoRefresh(enable: boolean) {
+    setTogglingAuto(true);
+    try {
+      const res = await fetch("/api/threads/refresh-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: enable ? "enable_auto" : "disable_auto" }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        // ローカルstate更新
+        setData(prev => prev ? {
+          ...prev,
+          setup: { ...prev.setup, threadsAutoRefresh: enable },
+        } : prev);
+      } else {
+        alert(json.error || "設定の変更に失敗しました");
+      }
+    } catch (e: any) {
+      alert("エラー: " + e.message);
+    }
+    setTogglingAuto(false);
+  }
 
   if (loading) {
     return (
@@ -109,6 +162,86 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Threads Token Expiry Warning */}
+      {data.setup.hasThreadsKey && data.setup.threadsTokenDaysLeft !== null && data.setup.threadsTokenDaysLeft <= 10 && (
+        <div className={`mb-6 p-4 rounded-lg border flex items-start gap-3 ${
+          data.setup.threadsTokenDaysLeft <= 0
+            ? "bg-red-50 border-red-200"
+            : data.setup.threadsTokenDaysLeft <= 3
+              ? "bg-red-50 border-red-200"
+              : "bg-amber-50 border-amber-200"
+        }`}>
+          <svg className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+            data.setup.threadsTokenDaysLeft <= 3 ? "text-red-500" : "text-amber-500"
+          }`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <div className="flex-1">
+            <p className={`text-sm font-semibold ${
+              data.setup.threadsTokenDaysLeft <= 3 ? "text-red-800" : "text-amber-800"
+            }`}>
+              {data.setup.threadsTokenDaysLeft <= 0
+                ? "Threads アクセストークンの有効期限が切れています"
+                : `Threads アクセストークンの有効期限があと ${data.setup.threadsTokenDaysLeft} 日です`}
+            </p>
+            <p className={`text-xs mt-1 ${
+              data.setup.threadsTokenDaysLeft <= 3 ? "text-red-600" : "text-amber-600"
+            }`}>
+              {data.setup.threadsTokenDaysLeft <= 0
+                ? "Threads への投稿ができなくなっています。"
+                : "期限が切れるとThreadsへの投稿ができなくなります。"}
+            </p>
+            <div className="flex items-center gap-3 mt-3 flex-wrap">
+              {data.setup.threadsTokenDaysLeft > 0 && (
+                <Button
+                  size="sm"
+                  onClick={() => handleRefreshToken()}
+                  disabled={refreshing}
+                >
+                  {refreshing ? "更新中..." : "今すぐトークンを更新"}
+                </Button>
+              )}
+              {data.setup.threadsTokenDaysLeft > 0 && !data.setup.threadsAutoRefresh && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleToggleAutoRefresh(true)}
+                  disabled={togglingAuto}
+                >
+                  {togglingAuto ? "設定中..." : "次回から自動更新する"}
+                </Button>
+              )}
+              {data.setup.threadsAutoRefresh && (
+                <span className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded-full">自動更新 ON</span>
+              )}
+              {data.setup.threadsTokenDaysLeft <= 0 && (
+                <Link href="/dashboard/settings">
+                  <Button size="sm">設定画面で再登録 →</Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Threads Auto-Refresh Active (no warning needed, but show status) */}
+      {data.setup.hasThreadsKey && data.setup.threadsAutoRefresh && data.setup.threadsTokenDaysLeft !== null && data.setup.threadsTokenDaysLeft > 10 && (
+        <div className="mb-6 p-3 rounded-lg border border-green-200 bg-green-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            <span className="text-xs text-green-700">Threads トークン自動更新 ON（残り {data.setup.threadsTokenDaysLeft} 日）</span>
+          </div>
+          <button
+            onClick={() => handleToggleAutoRefresh(false)}
+            disabled={togglingAuto}
+            className="text-xs text-green-600 hover:text-green-800 underline"
+          >
+            {togglingAuto ? "..." : "OFFにする"}
+          </button>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid md:grid-cols-3 gap-4 mb-8">

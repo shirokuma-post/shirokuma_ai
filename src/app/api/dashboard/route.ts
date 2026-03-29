@@ -38,12 +38,35 @@ export async function GET() {
 
   const { data: apiKeys } = await supabase
     .from("api_keys")
-    .select("provider, key_name")
+    .select("provider, key_name, updated_at")
     .eq("user_id", user.id);
 
   const hasAiKey = apiKeys?.some(k => ["anthropic", "openai", "google"].includes(k.provider)) || false;
   const hasXKey = apiKeys?.some(k => k.provider === "x") || false;
   const hasThreadsKey = apiKeys?.some(k => k.provider === "threads") || false;
+
+  // Threads トークン有効期限チェック（60日間）
+  let threadsTokenExpiresAt: string | null = null;
+  let threadsTokenDaysLeft: number | null = null;
+  let threadsAutoRefresh = false;
+  if (hasThreadsKey) {
+    const threadsAccessToken = apiKeys?.find(k => k.provider === "threads" && k.key_name === "access_token");
+    if (threadsAccessToken?.updated_at) {
+      const savedAt = new Date(threadsAccessToken.updated_at);
+      const expiresAt = new Date(savedAt.getTime() + 60 * 24 * 60 * 60 * 1000);
+      threadsTokenExpiresAt = expiresAt.toISOString();
+      threadsTokenDaysLeft = Math.floor((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+    }
+    // metadata取得のため別クエリ
+    const { data: threadsTokenMeta } = await supabase
+      .from("api_keys")
+      .select("metadata")
+      .eq("user_id", user.id)
+      .eq("provider", "threads")
+      .eq("key_name", "access_token")
+      .single();
+    threadsAutoRefresh = threadsTokenMeta?.metadata?.auto_refresh === true;
+  }
   const snsProvider = (profile?.sns_provider || null) as "x" | "threads" | null;
   // Businessプランは両方使えるので、どちらかのSNSキーがあればOK
   const hasSnsKey = plan === "business"
@@ -86,6 +109,9 @@ export async function GET() {
       hasXKey,
       hasThreadsKey,
       hasSnsKey,
+      threadsTokenExpiresAt,
+      threadsTokenDaysLeft,
+      threadsAutoRefresh,
     },
     recentPosts: recentPosts || [],
     totalPosts: totalPosts || 0,

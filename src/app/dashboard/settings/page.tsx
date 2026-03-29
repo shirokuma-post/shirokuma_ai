@@ -70,6 +70,10 @@ export default function SettingsPage() {
   const [structuredSummary, setStructuredSummary] = useState<any>(null);
   const [linkCode, setLinkCode] = useState<{ code: string; purpose: string } | null>(null);
   const [linkCodeLoading, setLinkCodeLoading] = useState(false);
+  const [threadsTokenDaysLeft, setThreadsTokenDaysLeft] = useState<number | null>(null);
+  const [threadsAutoRefresh, setThreadsAutoRefresh] = useState(false);
+  const [refreshingToken, setRefreshingToken] = useState(false);
+  const [togglingAutoRefresh, setTogglingAutoRefresh] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -107,6 +111,21 @@ export default function SettingsPage() {
         }
         if (keyData.keys) {
           setSavedKeys(keyData.keys.map((k: any) => k.provider + ":" + k.key_name));
+          // Threads トークン期限チェック
+          const threadsToken = keyData.keys.find((k: any) => k.provider === "threads" && k.key_name === "access_token");
+          if (threadsToken?.updated_at) {
+            const savedAt = new Date(threadsToken.updated_at);
+            const expiresAt = new Date(savedAt.getTime() + 60 * 24 * 60 * 60 * 1000);
+            const daysLeft = Math.floor((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+            setThreadsTokenDaysLeft(daysLeft);
+          }
+          // Threads 自動更新の状態を取得するためdashboard APIも確認
+          try {
+            const dashRes = await fetch("/api/dashboard");
+            const dashData = await dashRes.json();
+            if (dashData.setup?.threadsAutoRefresh) setThreadsAutoRefresh(true);
+          } catch {}
+
         }
       } catch (e) {
         console.error("Load error:", e);
@@ -510,7 +529,20 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-500 mt-1">Meta Developer Portalで取得したThreads APIの認証情報を設定（Businessプラン限定）</p>
                 </div>
                 {isKeySaved("threads") && (
-                  <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 設定済み</span>
+                  <div className="flex items-center gap-2">
+                    {threadsTokenDaysLeft !== null && threadsTokenDaysLeft <= 10 ? (
+                      <span className={`text-xs px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                        threadsTokenDaysLeft <= 0
+                          ? "bg-red-50 text-red-700"
+                          : threadsTokenDaysLeft <= 3
+                            ? "bg-red-50 text-red-700"
+                            : "bg-amber-50 text-amber-700"
+                      }`}>
+                        {threadsTokenDaysLeft <= 0 ? "期限切れ" : `残り${threadsTokenDaysLeft}日`}
+                      </span>
+                    ) : null}
+                    <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 設定済み</span>
+                  </div>
                 )}
               </div>
             </CardHeader>
@@ -531,6 +563,106 @@ export default function SettingsPage() {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
                 </div>
                 <p className="text-xs text-gray-400">Meta Developer Portal → Threads API → アクセストークンとユーザーIDを取得</p>
+                {isKeySaved("threads") && threadsTokenDaysLeft !== null && threadsTokenDaysLeft <= 10 && (
+                  <div className={`p-3 rounded-lg text-xs ${
+                    threadsTokenDaysLeft <= 0
+                      ? "bg-red-50 border border-red-200 text-red-700"
+                      : threadsTokenDaysLeft <= 3
+                        ? "bg-red-50 border border-red-200 text-red-700"
+                        : "bg-amber-50 border border-amber-200 text-amber-700"
+                  }`}>
+                    <p className="font-semibold">
+                      {threadsTokenDaysLeft <= 0
+                        ? "アクセストークンの有効期限が切れています"
+                        : `アクセストークンの有効期限があと ${threadsTokenDaysLeft} 日です`}
+                    </p>
+                    {threadsTokenDaysLeft > 0 ? (
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={async () => {
+                            setRefreshingToken(true);
+                            try {
+                              const res = await fetch("/api/threads/refresh-token", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "refresh" }),
+                              });
+                              const json = await res.json();
+                              if (res.ok && json.success) {
+                                alert(json.message);
+                                setThreadsTokenDaysLeft(json.daysLeft);
+                              } else {
+                                alert(json.error || "更新に失敗しました");
+                              }
+                            } catch (e: any) { alert("エラー: " + e.message); }
+                            setRefreshingToken(false);
+                          }}
+                          disabled={refreshingToken}
+                          className="px-2 py-1 bg-white border rounded font-medium hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {refreshingToken ? "更新中..." : "今すぐ更新"}
+                        </button>
+                        {!threadsAutoRefresh && (
+                          <button
+                            onClick={async () => {
+                              setTogglingAutoRefresh(true);
+                              try {
+                                const res = await fetch("/api/threads/refresh-token", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ action: "enable_auto" }),
+                                });
+                                const json = await res.json();
+                                if (res.ok && json.success) setThreadsAutoRefresh(true);
+                              } catch {}
+                              setTogglingAutoRefresh(false);
+                            }}
+                            disabled={togglingAutoRefresh}
+                            className="px-2 py-1 bg-white border rounded font-medium hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {togglingAutoRefresh ? "..." : "次回から自動更新"}
+                          </button>
+                        )}
+                        {threadsAutoRefresh && (
+                          <span className="px-2 py-1 bg-green-50 text-green-700 rounded">自動更新 ON</span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-1">
+                        Meta Developer Portal → Threads API → Settings → 「Generate Token」でトークンを再取得し、上の欄に貼り付けて保存してください。
+                      </p>
+                    )}
+                  </div>
+                )}
+                {isKeySaved("threads") && threadsAutoRefresh && (threadsTokenDaysLeft === null || threadsTokenDaysLeft > 10) && (
+                  <div className="p-2 rounded-lg text-xs bg-green-50 border border-green-200 text-green-700 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      <span>トークン自動更新 ON{threadsTokenDaysLeft !== null ? `（残り ${threadsTokenDaysLeft} 日）` : ""}</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setTogglingAutoRefresh(true);
+                        try {
+                          const res = await fetch("/api/threads/refresh-token", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "disable_auto" }),
+                          });
+                          const json = await res.json();
+                          if (res.ok && json.success) setThreadsAutoRefresh(false);
+                        } catch {}
+                        setTogglingAutoRefresh(false);
+                      }}
+                      disabled={togglingAutoRefresh}
+                      className="underline hover:no-underline"
+                    >
+                      {togglingAutoRefresh ? "..." : "OFFにする"}
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
                   <Button onClick={handleSaveThreadsKeys} disabled={savingThreads || !threadsKeys.accessToken.trim() || !threadsKeys.userId.trim()}>
                     {savingThreads ? "保存中..." : "保存する"}

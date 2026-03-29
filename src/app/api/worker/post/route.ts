@@ -401,7 +401,10 @@ async function postToSnsViaCron(
     `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/post`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
       body: JSON.stringify({
         provider,
         credentials,
