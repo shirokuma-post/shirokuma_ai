@@ -69,13 +69,11 @@ export async function POST(request: Request) {
       }
 
       if (provider === "x") {
-        const { data: xKeys, error: xKeysError } = await supabase
+        const { data: xKeys } = await supabase
           .from("api_keys")
           .select("*")
           .eq("user_id", authUser.id)
           .eq("provider", "x");
-
-        console.log(`[POST/X DEBUG] userId=${authUser.id}, xKeys=${xKeys?.length || 0}, error=${xKeysError?.message || "none"}`);
 
         if (!xKeys?.length) {
           return NextResponse.json({ error: "X APIキーが設定されていません。設定ページから登録してください。" }, { status: 400 });
@@ -83,9 +81,7 @@ export async function POST(request: Request) {
 
         const keyMap: Record<string, string> = {};
         for (const k of xKeys) {
-          const decrypted = decrypt(k.encrypted_value);
-          keyMap[k.key_name] = decrypted;
-          console.log(`[POST/X DEBUG] key_name=${k.key_name}, decrypted_len=${decrypted.length}, prefix=${decrypted.slice(0, 6)}...`);
+          keyMap[k.key_name] = decrypt(k.encrypted_value);
         }
 
         credentials = {
@@ -94,8 +90,6 @@ export async function POST(request: Request) {
           accessToken: keyMap["access_token"] || keyMap["accessToken"],
           accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
         };
-
-        console.log(`[POST/X DEBUG] mapped: ck=${credentials.consumerKey?.slice(0, 6)}, cs=${credentials.consumerSecret?.slice(0, 6)}, at=${credentials.accessToken?.slice(0, 6)}, ats=${credentials.accessTokenSecret?.slice(0, 6)}`);
 
         if (!credentials.consumerKey) {
           return NextResponse.json({ error: "X APIキーが不完全です。4つのキーをすべて設定してください。" }, { status: 400 });
