@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { Receiver } from "@upstash/qstash";
+import { getServiceClient } from "@/lib/supabase/service";
 import {
   fetchUserGenerationContext,
   fetchTrendContext,
@@ -30,14 +30,6 @@ interface WorkerPayload {
   trendCategories?: string[];
   mode?: "post-draft";
   draftPostId?: string;
-}
-
-// ---------- Service client ----------
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 }
 
 // ---------- QStash 署名検証 ----------

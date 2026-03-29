@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "crypto";
+import { NextResponse } from "next/server";
 
 /**
  * CRON_SECRET をタイミングセーフに検証する。
@@ -19,4 +20,16 @@ export function verifyCronSecret(authHeader: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Cron/QStash リクエストの認証を行う。
+ * 失敗時は 401 レスポンスを返す。成功時は null。
+ */
+export function verifyCronRequest(request: Request): NextResponse | null {
+  const hasQStashSignature = request.headers.has("upstash-signature");
+  if (!hasQStashSignature && !verifyCronSecret(request.headers.get("authorization"))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
 }

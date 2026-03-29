@@ -1,16 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { Client } from "@upstash/qstash";
-import { decrypt } from "@/lib/crypto";
-import { verifyCronSecret } from "@/lib/auth";
-
-// ---------- Service client (bypasses RLS) ----------
-function getServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import { getServiceClient } from "@/lib/supabase/service";
+import { verifyCronRequest } from "@/lib/auth";
 
 // =============================================================
 // Dispatcher: ドラフト投稿の実行
@@ -19,21 +10,15 @@ function getServiceClient() {
 // =============================================================
 // GET: Vercel Cron / POST: QStash Schedules
 async function handler(request: Request) {
-  // QStash署名 or CRON_SECRET で認証
-  const hasQStashSignature = request.headers.has("upstash-signature");
-  if (!hasQStashSignature && !verifyCronSecret(request.headers.get("authorization"))) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authReject = verifyCronRequest(request);
+  if (authReject) return authReject;
 
   try {
     const supabase = getServiceClient();
     const now = new Date();
-    const jstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
-    const currentTime =
-      jstNow.getHours().toString().padStart(2, "0") +
-      ":" +
-      jstNow.getMinutes().toString().padStart(2, "0");
-    const todayStr = jstNow.toISOString().split("T")[0];
+    const { getCurrentTimeStr, getTodayStr } = await import("@/lib/date-utils");
+    const currentTime = getCurrentTimeStr();
+    const todayStr = getTodayStr();
 
     console.log(`[CRON/POST] Running at JST ${currentTime} (${todayStr})`);
 
