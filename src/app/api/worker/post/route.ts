@@ -336,8 +336,10 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     return "posted";
   } else {
     const errorMsg = snsResults[snsTarget]?.error || "SNS投稿に失敗しました";
+    // SNS APIエラーの場合は下書きに戻す（手動で再投稿可能にする）
     await supabase.from("posts").update({
-      status: "failed",
+      status: "draft",
+      auto_post: false,
       error_message: errorMsg,
       sns_post_ids: snsResults,
     }).eq("id", postId);
@@ -351,7 +353,7 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
       sns_results: snsResults,
     });
 
-    console.error(`[WORKER] Failed draft ${postId} → ${snsTarget}: ${errorMsg}`);
+    console.error(`[WORKER] Failed draft ${postId} → ${snsTarget}: ${errorMsg} (reverted to draft)`);
     return "skipped";
   }
 }
