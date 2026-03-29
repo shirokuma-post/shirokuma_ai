@@ -399,8 +399,15 @@ ${PROHIBITIONS}`;
 export type SnsTarget = "x" | "threads";
 
 const SNS_CONTEXT: Record<SnsTarget, string> = {
-  x: `X（旧Twitter）向け。インパクト重視。スクロールの手を止めさせる1文目が命。最大140文字を意識。`,
+  x: `X（旧Twitter）向け。インパクト重視。スクロールの手を止めさせる1文目が命。`,
   threads: `Threads向け。共感重視。読者との距離が近い空気感。最大500文字まで使える。（※トーンはキャラクター設定に従う。カジュアルとは限らない）`,
+};
+
+// X向け文字数制限（日本語1文字=2ウェイト、上限280ウェイト → 実質140文字）
+const X_LENGTH_OVERRIDES: Record<PostLength, string> = {
+  short: "【厳守】30〜60文字以内。1文のみ。短く刺す。",
+  standard: "【厳守】80〜130文字以内。X（旧Twitter）の140文字制限を絶対に超えない。2〜3文で完結。",
+  long: "【厳守】120〜140文字以内。Xの上限ギリギリまで使い切るが、絶対に140文字を超えない。",
 };
 
 // =====================================================
@@ -582,7 +589,7 @@ ${voiceDirective}
 ${stylePrompt}
 
 === 3. 文字数・トーン ===
-文字数: ${lengthConfig.prompt}
+文字数: ${snsTarget === "x" ? X_LENGTH_OVERRIDES[postLength] : lengthConfig.prompt}
 トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
@@ -634,7 +641,7 @@ ${learningContext}` : `以下から最もエンゲージメントが高くなる
 気づき / 問い / 本音 / 寄り添い / おすそわけ / 物語 / 裏側 / 余韻 / ひとこと`}
 
 === 3. 文字数・トーン ===
-文字数: ${lengthConfig.prompt}
+文字数: ${snsTarget === "x" ? X_LENGTH_OVERRIDES[postLength] : lengthConfig.prompt}
 トーン: ${TIME_TONES[timeOfDay]}
 ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
