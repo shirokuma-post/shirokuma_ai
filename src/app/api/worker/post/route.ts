@@ -250,21 +250,26 @@ async function processSlot(
 
 // ---------- ドラフトをSNSに投稿 ----------
 async function postDraft(supabase: any, postId: string, userId: string): Promise<"posted" | "skipped"> {
-  const { data: draft, error } = await supabase
+  // アトミックにステータスを "sending" に変更（先着1件のみ成功）
+  // "draft" or "posting" → "sending" への遷移を試みる。失敗 = 他のworkerが先に取得済み
+  const { data: claimed, error: claimError } = await supabase
     .from("posts")
-    .select("*")
+    .update({ status: "sending" })
     .eq("id", postId)
     .in("status", ["draft", "posting"])
     .eq("auto_post", true)
+    .select("*")
     .single();
 
-  // 再生成でドラフトが削除された or auto_post OFF → 正常スキップ（QStash残骸）
-  if (error || !draft) {
-    console.log(`[WORKER] Skipping ${postId}: draft deleted or auto_post disabled (stale QStash job)`);
+  // 取得できなかった → 既に別のworkerが処理中 or 削除済み
+  if (claimError || !claimed) {
+    console.log(`[WORKER] Skipping ${postId}: already claimed by another worker or deleted`);
     return "skipped";
   }
 
-  // 時間ウィンドウガード: scheduled_at から ±15分以内のみ投稿
+  const draft = claimed;
+
+  // 時間ウィンドウガード: scheduled_at から15分以内のみ投稿
   const scheduledMs = new Date(draft.scheduled_at).getTime();
   const nowMs = Date.now();
   const diffMinutes = (nowMs - scheduledMs) / 60_000;
@@ -276,7 +281,6 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     }).eq("id", postId);
     return "skipped";
   }
-
 
   // 日次リセット + プラン上限チェック
   await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
@@ -297,9 +301,6 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
   const parts = content.split("\n\n---\n\n");
   const hookText = isSplitSlot ? parts[0] : content.replace(/\n\n---\n\n/g, "\n\n");
   const replyText = isSplitSlot && parts.length > 1 ? parts[1] : null;
-
-  // ステータスを "posting" に変更（重複実行防止）
-  await supabase.from("posts").update({ status: "posting" }).eq("id", postId);
 
   const snsResults: Record<string, any> = {};
   let snsSuccess = false;
