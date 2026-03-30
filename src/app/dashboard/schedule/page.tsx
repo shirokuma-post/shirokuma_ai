@@ -10,7 +10,7 @@ type UserPlan = "free" | "pro" | "business";
 
 interface Slot {
   time: string;
-  target: "x" | "threads";
+  target: "x" | "threads" | "instagram";
   style: string;
   character: string;
   length: string;
@@ -46,6 +46,7 @@ const LENGTHS = [
 const TARGETS = [
   { id: "x" as const, label: "X" },
   { id: "threads" as const, label: "Threads" },
+  { id: "instagram" as const, label: "Instagram" },
 ];
 
 // Free: 4種、Pro+: 全11種
@@ -80,7 +81,7 @@ export default function SchedulePage() {
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
-  const [userSnsProvider, setUserSnsProvider] = useState<"x" | "threads" | null>(null);
+  const [userSnsProvider, setUserSnsProvider] = useState<"x" | "threads" | "instagram" | null>(null);
   const [customStyles, setCustomStyles] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => { fetchSchedule(); fetchPlan(); fetchStyleDefaults(); }, []);
@@ -206,7 +207,9 @@ export default function SchedulePage() {
   }
 
   // SNSターゲットが使えるか
-  function canUseTarget(targetId: "x" | "threads"): boolean {
+  function canUseTarget(targetId: "x" | "threads" | "instagram"): boolean {
+    // InstagramはBusinessプラン限定
+    if (targetId === "instagram") return isMultiSns;
     if (isMultiSns) return true;
     return userSnsProvider === targetId;
   }
@@ -264,7 +267,7 @@ export default function SchedulePage() {
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-mono font-semibold text-gray-900">{slot.time}</span>
-                      <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (slot.target === "x" ? "bg-gray-100 text-gray-700" : slot.target === "threads" ? "bg-purple-50 text-purple-700" : "bg-blue-50 text-blue-700")}>{targetLabel}</span>
+                      <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (slot.target === "x" ? "bg-gray-100 text-gray-700" : slot.target === "threads" ? "bg-purple-50 text-purple-700" : slot.target === "instagram" ? "bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white" : "bg-blue-50 text-blue-700")}>{targetLabel}</span>
                       <span className="text-xs text-gray-500">{styleLabel}</span>
                       {slot.theme && <span className="text-xs text-blue-500 truncate max-w-[120px]">{slot.theme}</span>}
                       {slot.split && <span className="text-xs text-purple-500">分割</span>}
@@ -296,7 +299,7 @@ export default function SchedulePage() {
                             const locked = !canUseTarget(t.id);
                             return (
                               <button key={t.id}
-                                onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id, ...(t.id === "x" ? { split: false } : {}) })}
+                                onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id, ...(t.id !== "threads" ? { split: false } : {}) })}
                                 className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
                                   (slot.target === t.id ? "border-brand-500 bg-brand-50 text-brand-700" :
                                     locked ? "border-gray-100 bg-white text-gray-400" :
@@ -307,6 +310,9 @@ export default function SchedulePage() {
                           })}
                           {!isMultiSns && <span className="text-xs text-amber-600 ml-1">Businessで両方解放</span>}
                         </div>
+                        {slot.target === "instagram" && (
+                          <p className="text-xs text-amber-600 mt-1">※ Instagram投稿には画像が必須です。ドラフト生成後、投稿画面で画像を添付してください。</p>
+                        )}
                       </div>
 
                       {/* Style */}

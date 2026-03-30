@@ -371,7 +371,7 @@ export default function PostsPage() {
         });
         // Actually we need to mark it as posted via a separate mechanism
         // For now, refetch
-        setPostResult(`${draft.sns_target === "threads" ? "Threads" : "X"} に投稿しました！`);
+        setPostResult(`${draft.sns_target === "threads" ? "Threads" : draft.sns_target === "instagram" ? "Instagram" : "X"} に投稿しました！`);
         fetchTodayDrafts();
         fetchPosts(1);
       } else {
@@ -406,6 +406,10 @@ export default function PostsPage() {
   async function handlePost() {
     if (!editText) return;
     const provider = previewTarget;
+    if (provider === "instagram" && !previewImageUrl) {
+      setPostResult("エラー: Instagramは画像必須です。画像をアップロードしてください。");
+      return;
+    }
     setPosting(provider); setPostResult(null);
     try {
       const payload: any = { provider, text: editText };
@@ -414,7 +418,7 @@ export default function PostsPage() {
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok) {
-        const label = provider === "x" ? "X" : "Threads";
+        const label = provider === "x" ? "X" : provider === "threads" ? "Threads" : "Instagram";
         setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewImageUrl(null); fetchPosts(1);
       } else { setPostResult("エラー: " + (data.error || data.message || "投稿に失敗")); }
     } catch (e) { setPostResult("エラー: 通信に失敗しました"); } finally { setPosting(null); }
@@ -949,7 +953,7 @@ export default function PostsPage() {
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold text-gray-900">プレビュー</h2>
                 {splitReply && <span className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full">スレッド投稿</span>}
-                {previewTarget === "x" ? <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span> : <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}
+                {getSnsLabel(previewTarget)}
               </div>
               <span className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-full">未投稿</span>
             </div>
