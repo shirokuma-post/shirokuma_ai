@@ -64,7 +64,8 @@ export const PLANS = {
     learningEnabled: true,
     trendEnabled: true,
     features: [
-      "X + Threads 両方対応",
+      "X + Threads + Instagram 対応",
+      "動画投稿（Threads・Instagram Reels）",
       "無制限投稿",
       "スケジュール無制限",
       "全11スタイル",

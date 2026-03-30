@@ -671,13 +671,17 @@ export default function PostsPage() {
                                 </button>
                               </>
                             )}
-                            {!hasMedia && (
-                              <label className={"flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors cursor-pointer " + (uploadingImage === draft.id ? "opacity-50 pointer-events-none" : "")}>
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
-                                {uploadingImage === draft.id ? "アップロード中..." : "画像/動画"}
-                                <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDraftMediaUpload(draft.id, f); }} />
-                              </label>
-                            )}
+                            {!hasMedia && (() => {
+                              const isXDraft = draft.sns_target === "x";
+                              const acceptTypes = isXDraft ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm";
+                              return (
+                                <label className={"flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors cursor-pointer " + (uploadingImage === draft.id ? "opacity-50 pointer-events-none" : "")}>
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
+                                  {uploadingImage === draft.id ? "アップロード中..." : isXDraft ? "画像" : "画像/動画"}
+                                  <input type="file" accept={acceptTypes} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDraftMediaUpload(draft.id, f); }} />
+                                </label>
+                              );
+                            })()}
                           </div>
                         );
                       })()}
@@ -1044,8 +1048,8 @@ export default function PostsPage() {
               ) : (
                 <label className={"flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 hover:border-gray-400 transition-colors cursor-pointer " + (uploadingPreviewImage ? "opacity-50 pointer-events-none" : "")}>
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
-                  {uploadingPreviewImage ? "アップロード中..." : "画像/動画を追加"}
-                  <input type="file" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePreviewMediaUpload(f); }} />
+                  {uploadingPreviewImage ? "アップロード中..." : previewTarget === "x" ? "画像を追加" : "画像/動画を追加"}
+                  <input type="file" accept={previewTarget === "x" ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePreviewMediaUpload(f); }} />
                 </label>
               )}
               {snsTab === "x" && (previewVideoUrl) && (
