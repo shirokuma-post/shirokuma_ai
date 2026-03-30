@@ -11,7 +11,7 @@ import { verifyCronSecret } from "@/lib/auth";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { provider, text, splitReply, imageUrl, credentials: externalCreds } = body;
+    const { provider, text, splitReply, imageUrl, videoUrl, credentials: externalCreds } = body;
 
     if (!text) {
       return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
@@ -23,10 +23,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "無効なプロバイダです" }, { status: 400 });
     }
 
-    // 画像URLのSSRF防止チェック
+    // メディアURLのSSRF防止チェック
     if (imageUrl && !isUrlSafe(imageUrl)) {
       return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
     }
+    if (videoUrl && !isUrlSafe(videoUrl)) {
+      return NextResponse.json({ error: "無効な動画URLです" }, { status: 400 });
+    }
+    // メディアURL（動画優先、なければ画像）
+    const mediaUrl = videoUrl || imageUrl;
+    const mediaType: "video" | "image" | null = videoUrl ? "video" : imageUrl ? "image" : null;
 
     // 外部から credentials が渡された場合はCRON_SECRET認証が必要（cron/workerからの呼び出し用）
     // そうでなければ認証ユーザーのキーをDBから取得
@@ -168,14 +174,15 @@ export async function POST(request: Request) {
     // 投稿実行
     let result: Response;
     if (provider === "x") {
+      // X は動画非対応（チャンクアップロード未実装）、画像のみ
       result = splitReply ? await postXThread(credentials, text, splitReply) : await postToX(credentials, text, imageUrl);
     } else if (provider === "threads") {
-      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text, imageUrl);
+      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text, mediaUrl, mediaType);
     } else if (provider === "instagram") {
-      if (!imageUrl) {
-        return NextResponse.json({ error: "Instagramは画像必須です。画像をアップロードしてください。" }, { status: 400 });
+      if (!mediaUrl) {
+        return NextResponse.json({ error: "Instagramはメディア必須です。画像または動画をアップロードしてください。" }, { status: 400 });
       }
-      result = await postToInstagram(credentials, text, imageUrl);
+      result = await postToInstagram(credentials, text, mediaUrl, mediaType || "image");
     } else {
       return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
@@ -315,16 +322,23 @@ async function postXThread(creds: any, hookText: string, replyText: string) {
 }
 
 // ---------- Threads posting ----------
-async function postToThreads(creds: { accessToken: string; userId: string }, text: string, imageUrl?: string) {
-  // 画像がある場合は IMAGE タイプ、なければ TEXT タイプ
-  const containerPayload: any = imageUrl
-    ? { media_type: "IMAGE", image_url: imageUrl, text, access_token: creds.accessToken }
-    : { media_type: "TEXT", text, access_token: creds.accessToken };
+async function postToThreads(creds: { accessToken: string; userId: string }, text: string, mediaUrl?: string, mediaType?: "video" | "image" | null) {
+  // 動画→VIDEO、画像→IMAGE、なし→TEXT
+  let containerPayload: any;
+  if (mediaUrl && mediaType === "video") {
+    containerPayload = { media_type: "VIDEO", video_url: mediaUrl, text, access_token: creds.accessToken };
+  } else if (mediaUrl) {
+    containerPayload = { media_type: "IMAGE", image_url: mediaUrl, text, access_token: creds.accessToken };
+  } else {
+    containerPayload = { media_type: "TEXT", text, access_token: creds.accessToken };
+  }
 
   const createRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(containerPayload) });
   if (!createRes.ok) { const e = await createRes.text(); return NextResponse.json({ error: `Threads error: ${e}` }, { status: createRes.status }); }
   const { id: cid } = await createRes.json();
-  await new Promise((r) => setTimeout(r, 2000));
+  // 動画はエンコード処理に時間がかかるため長めに待つ
+  const waitMs = mediaType === "video" ? 10000 : 2000;
+  await new Promise((r) => setTimeout(r, waitMs));
   const pubRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads_publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creation_id: cid, access_token: creds.accessToken }) });
   if (!pubRes.ok) { const e = await pubRes.text(); return NextResponse.json({ error: `Threads publish error: ${e}` }, { status: pubRes.status }); }
   const data = await pubRes.json();
@@ -351,18 +365,25 @@ async function postThreadsThread(creds: { accessToken: string; userId: string },
 }
 
 // ---------- Instagram posting ----------
-async function postToInstagram(creds: { accessToken: string; igUserId: string }, caption: string, imageUrl: string) {
-  // Step 1: メディアコンテナを作成
+async function postToInstagram(creds: { accessToken: string; igUserId: string }, caption: string, mediaUrl: string, mediaType: "video" | "image" = "image") {
+  // Step 1: メディアコンテナを作成（動画はREELS、画像は通常）
+  const containerBody: any = {
+    caption,
+    access_token: creds.accessToken,
+  };
+  if (mediaType === "video") {
+    containerBody.media_type = "REELS";
+    containerBody.video_url = mediaUrl;
+  } else {
+    containerBody.image_url = mediaUrl;
+  }
+
   const containerRes = await fetch(
     `https://graph.facebook.com/v19.0/${creds.igUserId}/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url: imageUrl,
-        caption,
-        access_token: creds.accessToken,
-      }),
+      body: JSON.stringify(containerBody),
     },
   );
 
@@ -373,8 +394,9 @@ async function postToInstagram(creds: { accessToken: string; igUserId: string },
 
   const { id: containerId } = await containerRes.json();
 
-  // Step 2: コンテナの処理完了を待つ
-  await new Promise((r) => setTimeout(r, 3000));
+  // Step 2: コンテナの処理完了を待つ（動画は長めに）
+  const waitMs = mediaType === "video" ? 15000 : 3000;
+  await new Promise((r) => setTimeout(r, waitMs));
 
   // Step 3: パブリッシュ
   const publishRes = await fetch(

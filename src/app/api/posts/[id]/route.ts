@@ -36,6 +36,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
       updates.image_url = body.image_url;
     }
+    if (body.video_url !== undefined) {
+      if (body.video_url !== null && !isUrlSafe(body.video_url)) {
+        return NextResponse.json({ error: "無効な動画URLです" }, { status: 400 });
+      }
+      updates.video_url = body.video_url;
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No updates" }, { status: 400 });

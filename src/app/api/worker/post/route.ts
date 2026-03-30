@@ -296,6 +296,7 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     throw new Error("Instagram投稿はBusinessプラン限定です");
   }
   const imageUrl = draft.image_url || null;
+  const videoUrl = draft.video_url || null;
 
   const draftSlotCfg = draft.slot_config as any;
   const isSplitSlot = draftSlotCfg?.split === true;
@@ -309,9 +310,9 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     if (snsTarget === "x") {
       snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null, imageUrl);
     } else if (snsTarget === "threads") {
-      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl);
+      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl, videoUrl);
     } else if (snsTarget === "instagram") {
-      snsResults.instagram = await postToSnsViaCron(supabase, userId, "instagram", hookText, null, imageUrl);
+      snsResults.instagram = await postToSnsViaCron(supabase, userId, "instagram", hookText, null, imageUrl, videoUrl);
     }
     // SNS APIからエラーが返った場合もチェック
     const result = snsResults[snsTarget];
@@ -377,6 +378,7 @@ async function postToSnsViaCron(
   hookText: string,
   replyText: string | null,
   imageUrl?: string | null,
+  videoUrl?: string | null,
 ) {
   const { data: keys } = await supabase
     .from("api_keys")
@@ -428,6 +430,7 @@ async function postToSnsViaCron(
         text: hookText,
         ...(replyText ? { splitReply: replyText } : {}),
         ...(imageUrl ? { imageUrl } : {}),
+        ...(videoUrl ? { videoUrl } : {}),
       }),
     },
   );
