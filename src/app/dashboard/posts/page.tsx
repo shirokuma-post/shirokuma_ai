@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import type { VoiceProfile } from "@/lib/ai/generate-post";
 import TagInput from "@/components/TagInput";
 
-type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; created_at: string };
+type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; image_url: string | null; created_at: string };
 type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
-type SnsTarget = "x" | "threads";
+type SnsTarget = "x" | "threads" | "instagram";
 
 const STYLE_LABELS: Record<string, string> = { kizuki: "気づき", toi: "問い", honne: "本音", yorisoi: "寄り添い", osusowake: "おすそわけ", monogatari: "物語", uragawa: "裏側", yoin: "余韻", hitokoto: "ひとこと", mix: "おまかせ", ai_optimized: "AI最適化", paradigm_break: "気づき", provocative: "問い", flip: "裏側", poison_story: "余韻", boyaki: "本音", yueki: "おすそわけ", jitsuwa: "物語", kyoukan: "寄り添い" };
 const STYLE_OPTIONS = [
@@ -92,6 +92,14 @@ export default function PostsPage() {
   const [registering, setRegistering] = useState(false);
   const [needsRegistration, setNeedsRegistration] = useState(false);
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+
+  // --- 画像アップロード ---
+  const [draftImageUrls, setDraftImageUrls] = useState<Record<string, string>>({});
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [uploadingPreviewImage, setUploadingPreviewImage] = useState(false);
+  const [imageModal, setImageModal] = useState<string | null>(null);
+  const [generatingCaption, setGeneratingCaption] = useState<string | null>(null);
 
   // 承認待ち (legacy support)
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
@@ -260,6 +268,82 @@ export default function PostsPage() {
     } catch {}
   }
 
+  async function handleImageUpload(file: File): Promise<string | null> {
+    if (file.size > 5 * 1024 * 1024) { setPostResult("エラー: ファイルサイズは5MB以下にしてください"); return null; }
+    if (!["image/jpeg", "image/png", "image/gif", "image/webp"].includes(file.type)) { setPostResult("エラー: 対応形式: JPEG, PNG, GIF, WebP"); return null; }
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload-image", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) { setPostResult("エラー: " + (data.error || "アップロード失敗")); return null; }
+      return data.url as string;
+    } catch { setPostResult("エラー: 画像アップロードに失敗しました"); return null; }
+  }
+
+  async function handleDraftImageUpload(draftId: string, file: File) {
+    setUploadingImage(draftId);
+    const url = await handleImageUpload(file);
+    if (url) {
+      setDraftImageUrls((prev) => ({ ...prev, [draftId]: url }));
+      await fetch(`/api/posts/${draftId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image_url: url }),
+      });
+      setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, image_url: url } : d));
+    }
+    setUploadingImage(null);
+  }
+
+  async function handleDraftImageRemove(draftId: string) {
+    setDraftImageUrls((prev) => { const n = { ...prev }; delete n[draftId]; return n; });
+    await fetch(`/api/posts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_url: null }),
+    });
+    setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, image_url: null } : d));
+  }
+
+  async function handleGenerateCaption(imageUrl: string, target: "draft" | "preview", draftId?: string) {
+    const captionTarget = draftId || "preview";
+    setGeneratingCaption(captionTarget);
+    try {
+      const res = await fetch("/api/generate-caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl, snsTarget: snsTab }),
+      });
+      const data = await res.json();
+      if (res.ok && data.caption) {
+        if (target === "draft" && draftId) {
+          // ドラフトの内容をキャプションで置換
+          await fetch(`/api/posts/${draftId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: data.caption }),
+          });
+          setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, content: data.caption } : d));
+        } else {
+          // プレビューのテキストをキャプションに設定
+          setEditText(data.caption);
+          if (!preview) { setPreview(data.caption); setPreviewTarget(snsTab); }
+        }
+      } else {
+        setPostResult("エラー: " + (data.error || "キャプション生成に失敗"));
+      }
+    } catch { setPostResult("エラー: キャプション生成に失敗しました"); }
+    setGeneratingCaption(null);
+  }
+
+  async function handlePreviewImageUpload(file: File) {
+    setUploadingPreviewImage(true);
+    const url = await handleImageUpload(file);
+    if (url) setPreviewImageUrl(url);
+    setUploadingPreviewImage(false);
+  }
+
   async function handleManualPost(draft: Post) {
     setPosting(draft.id);
     try {
@@ -273,6 +357,8 @@ export default function PostsPage() {
 
       const payload: any = { provider: draft.sns_target || "x", text: hookText };
       if (replyText) payload.splitReply = replyText;
+      const imgUrl = draftImageUrls[draft.id] || draft.image_url;
+      if (imgUrl) payload.imageUrl = imgUrl;
 
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
@@ -324,11 +410,12 @@ export default function PostsPage() {
     try {
       const payload: any = { provider, text: editText };
       if (splitReply && editReply) payload.splitReply = editReply;
+      if (previewImageUrl) payload.imageUrl = previewImageUrl;
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok) {
         const label = provider === "x" ? "X" : "Threads";
-        setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); fetchPosts(1);
+        setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewImageUrl(null); fetchPosts(1);
       } else { setPostResult("エラー: " + (data.error || data.message || "投稿に失敗")); }
     } catch (e) { setPostResult("エラー: 通信に失敗しました"); } finally { setPosting(null); }
   }
@@ -350,10 +437,11 @@ export default function PostsPage() {
   }
   function getSnsIcons(ids: any) {
     if (!ids) return null;
-    return <div className="flex gap-1">{ids.x && <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>}{ids.threads && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}</div>;
+    return <div className="flex gap-1">{ids.x && <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>}{ids.threads && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}{ids.instagram && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded">IG</span>}</div>;
   }
   function getSnsLabel(target: string | null) {
     if (target === "threads") return <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>;
+    if (target === "instagram") return <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded">Instagram</span>;
     return <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>;
   }
 
@@ -516,6 +604,37 @@ export default function PostsPage() {
                         return <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{cleanContent}</p>;
                       })()}
 
+                      {/* Image upload/preview */}
+                      {(() => {
+                        const imgUrl = draftImageUrls[draft.id] || draft.image_url;
+                        return (
+                          <div className="flex items-center gap-2 mt-2">
+                            {imgUrl && (
+                              <>
+                                <div className="relative group">
+                                  <img src={imgUrl} alt="添付画像" className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer" onClick={() => setImageModal(imgUrl)} />
+                                  <button onClick={() => handleDraftImageRemove(draft.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                                </div>
+                                <button
+                                  onClick={() => handleGenerateCaption(imgUrl, "draft", draft.id)}
+                                  disabled={generatingCaption === draft.id}
+                                  className="text-xs text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50 transition-colors"
+                                >
+                                  {generatingCaption === draft.id ? "AI生成中..." : "AIキャプション"}
+                                </button>
+                              </>
+                            )}
+                            {!imgUrl && (
+                              <label className={"flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors cursor-pointer " + (uploadingImage === draft.id ? "opacity-50 pointer-events-none" : "")}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
+                                {uploadingImage === draft.id ? "アップロード中..." : "画像"}
+                                <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDraftImageUpload(draft.id, f); }} />
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Actions */}
                       {!isEditing && (
                         <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
@@ -581,8 +700,15 @@ export default function PostsPage() {
                 Threads 向け
               </button>
             )}
+            {isMultiSns && (
+              <button onClick={() => setSnsTab("instagram")}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "instagram" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                <span className="w-4 h-4 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded text-[10px] flex items-center justify-center font-bold">I</span>
+                Instagram 向け
+              </button>
+            )}
             {!isMultiSns && (
-              <span className="px-3 py-2 text-xs text-gray-400">Businessで両SNS解放</span>
+              <span className="px-3 py-2 text-xs text-gray-400">Businessで全SNS解放</span>
             )}
           </div>
 
@@ -809,7 +935,7 @@ export default function PostsPage() {
 
           <div className="mt-4">
             <Button onClick={handleGenerate} disabled={generating || limitReached} size="sm">
-              {generating ? "生成中..." : limitReached ? "上限に達しました" : isX ? "X 向けに生成" : "Threads 向けに生成"}
+              {generating ? "生成中..." : limitReached ? "上限に達しました" : snsTab === "x" ? "X 向けに生成" : snsTab === "threads" ? "Threads 向けに生成" : "Instagram 向けに生成"}
             </Button>
           </div>
         </CardContent>
@@ -844,10 +970,34 @@ export default function PostsPage() {
                 <p className="text-xs text-gray-400 mt-1">{editReply.length} 文字</p>
               </div>
             )}
+            {/* Image upload for preview */}
+            <div className="flex items-center gap-2 mb-4">
+              {previewImageUrl ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative group">
+                    <img src={previewImageUrl} alt="添付画像" className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer" onClick={() => setImageModal(previewImageUrl)} />
+                    <button onClick={() => setPreviewImageUrl(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                  </div>
+                  <button
+                    onClick={() => handleGenerateCaption(previewImageUrl, "preview")}
+                    disabled={generatingCaption === "preview"}
+                    className="text-xs text-purple-600 hover:text-purple-700 px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
+                  >
+                    {generatingCaption === "preview" ? "AI生成中..." : "AIでキャプション生成"}
+                  </button>
+                </div>
+              ) : (
+                <label className={"flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 hover:border-gray-400 transition-colors cursor-pointer " + (uploadingPreviewImage ? "opacity-50 pointer-events-none" : "")}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
+                  {uploadingPreviewImage ? "アップロード中..." : "画像を追加"}
+                  <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePreviewImageUpload(f); }} />
+                </label>
+              )}
+            </div>
             <div className="flex gap-2">
-              <Button size="sm" onClick={handlePost} disabled={!!posting}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : "Threads に投稿"}</Button>
+              <Button size="sm" onClick={handlePost} disabled={!!posting}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : previewTarget === "threads" ? "Threads に投稿" : "Instagram に投稿"}</Button>
               <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating || limitReached}>再生成</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); }}>破棄</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewImageUrl(null); }}>破棄</Button>
             </div>
           </CardContent>
         </Card>
@@ -945,6 +1095,11 @@ export default function PostsPage() {
                       <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed line-clamp-4">{post.content}</p>
                     );
                   })()}
+                  {post.image_url && (
+                    <div className="mt-2">
+                      <img src={post.image_url} alt="添付画像" className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer" onClick={() => setImageModal(post.image_url)} />
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 mt-2">
                     {post.ai_model_used && <span className="text-xs text-gray-300">{post.ai_model_used}</span>}
                     <span className="text-xs text-gray-300">{(post.content || "").length}文字</span>
@@ -962,6 +1117,16 @@ export default function PostsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Image modal */}
+      {imageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setImageModal(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <img src={imageModal} alt="画像プレビュー" className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+            <button onClick={() => setImageModal(null)} className="absolute top-2 right-2 w-8 h-8 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-black/70 transition-colors">✕</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -127,6 +127,33 @@ export async function POST(request: Request) {
         if (!credentials.accessToken || !credentials.userId) {
           return NextResponse.json({ error: "Threads APIキーが不完全です。アクセストークンとユーザーIDを設定してください。" }, { status: 400 });
         }
+      } else if (provider === "instagram") {
+        if (plan !== "business") {
+          return NextResponse.json({ error: "Instagram投稿はBusinessプラン限定です。プランをアップグレードしてください。" }, { status: 403 });
+        }
+        const { data: igKeys } = await supabase
+          .from("api_keys")
+          .select("*")
+          .eq("user_id", authUser.id)
+          .eq("provider", "instagram");
+
+        if (!igKeys?.length) {
+          return NextResponse.json({ error: "Instagram APIキーが設定されていません。設定ページから登録してください。" }, { status: 400 });
+        }
+
+        const keyMap: Record<string, string> = {};
+        for (const k of igKeys) {
+          keyMap[k.key_name] = decrypt(k.encrypted_value);
+        }
+
+        credentials = {
+          accessToken: keyMap["access_token"] || keyMap["accessToken"],
+          igUserId: keyMap["ig_user_id"] || keyMap["igUserId"],
+        };
+
+        if (!credentials.accessToken || !credentials.igUserId) {
+          return NextResponse.json({ error: "Instagram APIキーが不完全です。アクセストークンとInstagramビジネスアカウントIDを設定してください。" }, { status: 400 });
+        }
       } else {
         return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
       }
@@ -138,6 +165,11 @@ export async function POST(request: Request) {
       result = splitReply ? await postXThread(credentials, text, splitReply) : await postToX(credentials, text, imageUrl);
     } else if (provider === "threads") {
       result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text, imageUrl);
+    } else if (provider === "instagram") {
+      if (!imageUrl) {
+        return NextResponse.json({ error: "Instagramは画像必須です。画像をアップロードしてください。" }, { status: 400 });
+      }
+      result = await postToInstagram(credentials, text, imageUrl);
     } else {
       return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
@@ -310,4 +342,52 @@ async function postThreadsThread(creds: { accessToken: string; userId: string },
   if (!rpRes.ok) { const e = await rpRes.text(); return NextResponse.json({ error: `Threads reply publish error: ${e}`, hookId, partial: true }, { status: rpRes.status }); }
   const replyData = await rpRes.json();
   return NextResponse.json({ id: hookId, replyId: replyData.id, thread: true });
+}
+
+// ---------- Instagram posting ----------
+async function postToInstagram(creds: { accessToken: string; igUserId: string }, caption: string, imageUrl: string) {
+  // Step 1: メディアコンテナを作成
+  const containerRes = await fetch(
+    `https://graph.facebook.com/v19.0/${creds.igUserId}/media`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_url: imageUrl,
+        caption,
+        access_token: creds.accessToken,
+      }),
+    },
+  );
+
+  if (!containerRes.ok) {
+    const e = await containerRes.text();
+    return NextResponse.json({ error: `Instagram container error: ${e}` }, { status: containerRes.status });
+  }
+
+  const { id: containerId } = await containerRes.json();
+
+  // Step 2: コンテナの処理完了を待つ
+  await new Promise((r) => setTimeout(r, 3000));
+
+  // Step 3: パブリッシュ
+  const publishRes = await fetch(
+    `https://graph.facebook.com/v19.0/${creds.igUserId}/media_publish`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        creation_id: containerId,
+        access_token: creds.accessToken,
+      }),
+    },
+  );
+
+  if (!publishRes.ok) {
+    const e = await publishRes.text();
+    return NextResponse.json({ error: `Instagram publish error: ${e}` }, { status: publishRes.status });
+  }
+
+  const data = await publishRes.json();
+  return NextResponse.json({ id: data.id });
 }

@@ -44,6 +44,7 @@ export async function GET() {
   const hasAiKey = apiKeys?.some(k => ["anthropic", "openai", "google"].includes(k.provider)) || false;
   const hasXKey = apiKeys?.some(k => k.provider === "x") || false;
   const hasThreadsKey = apiKeys?.some(k => k.provider === "threads") || false;
+  const hasInstagramKey = apiKeys?.some(k => k.provider === "instagram") || false;
 
   // Threads トークン有効期限チェック（60日間）
   let threadsTokenExpiresAt: string | null = null;
@@ -70,7 +71,7 @@ export async function GET() {
   const snsProvider = (profile?.sns_provider || null) as "x" | "threads" | null;
   // Businessプランは両方使えるので、どちらかのSNSキーがあればOK
   const hasSnsKey = plan === "business"
-    ? (hasXKey || hasThreadsKey)
+    ? (hasXKey || hasThreadsKey || hasInstagramKey)
     : snsProvider === "x" ? hasXKey : snsProvider === "threads" ? hasThreadsKey : false;
 
   const { data: recentPosts } = await supabase
@@ -108,6 +109,7 @@ export async function GET() {
       hasAiKey,
       hasXKey,
       hasThreadsKey,
+      hasInstagramKey,
       hasSnsKey,
       threadsTokenExpiresAt,
       threadsTokenDaysLeft,

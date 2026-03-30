@@ -15,6 +15,7 @@ interface DashboardData {
     hasAiKey: boolean;
     hasXKey: boolean;
     hasThreadsKey: boolean;
+    hasInstagramKey: boolean;
     hasSnsKey: boolean;
     threadsTokenExpiresAt: string | null;
     threadsTokenDaysLeft: number | null;
@@ -109,7 +110,7 @@ export default function DashboardPage() {
   const isBusiness = data.plan?.id === "business";
   const snsLabel = isBusiness ? "SNS" : data.snsProvider === "threads" ? "Threads" : "X";
   const snsDetail = isBusiness
-    ? [data.setup.hasXKey && "X", data.setup.hasThreadsKey && "Threads"].filter(Boolean).join(" + ") || undefined
+    ? [data.setup.hasXKey && "X", data.setup.hasThreadsKey && "Threads", data.setup.hasInstagramKey && "Instagram"].filter(Boolean).join(" + ") || undefined
     : undefined;
   const setupItems = [
     { label: "マイコンセプト", done: data.setup.hasConcept, detail: data.setup.conceptTitle },

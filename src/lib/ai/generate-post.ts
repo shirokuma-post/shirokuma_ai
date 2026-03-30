@@ -396,11 +396,12 @@ ${PROHIBITIONS}`;
 
 
 // SNSプラットフォーム別の特性
-export type SnsTarget = "x" | "threads";
+export type SnsTarget = "x" | "threads" | "instagram";
 
 const SNS_CONTEXT: Record<SnsTarget, string> = {
   x: `X（旧Twitter）向け。インパクト重視。スクロールの手を止めさせる1文目が命。`,
   threads: `Threads向け。共感重視。読者との距離が近い空気感。最大500文字まで使える。（※トーンはキャラクター設定に従う。カジュアルとは限らない）`,
+  instagram: `Instagram向け。画像投稿に添えるキャプション。ビジュアルとの関連を意識しつつ、共感や気づきを盛り込む。最大2200文字まで使えるが、300〜500文字が最適。改行を効果的に使う。ハッシュタグは本文に含めない。`,
 };
 
 // X向け文字数制限（日本語1文字=2ウェイト、上限280ウェイト → 実質140文字）

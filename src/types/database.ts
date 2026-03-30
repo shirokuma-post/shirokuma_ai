@@ -4,7 +4,7 @@
 // =====================================================
 
 export type AiProvider = "anthropic" | "openai" | "google";
-export type SnsProvider = "x" | "threads";
+export type SnsProvider = "x" | "threads" | "instagram";
 export type PostStatus = "draft" | "scheduled" | "posted" | "failed" | "pending_approval" | "posting";
 export type PostStyle =
   | "kizuki"

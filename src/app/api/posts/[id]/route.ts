@@ -29,6 +29,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (body.content !== undefined) updates.content = body.content;
     if (body.auto_post !== undefined) updates.auto_post = body.auto_post;
+    if (body.image_url !== undefined) updates.image_url = body.image_url;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No updates" }, { status: 400 });

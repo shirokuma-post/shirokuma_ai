@@ -32,6 +32,9 @@ export default function SettingsPage() {
   const [aiKey, setAiKey] = useState("");
   const [xKeys, setXKeys] = useState({ consumerKey: "", consumerSecret: "", accessToken: "", accessTokenSecret: "" });
   const [threadsKeys, setThreadsKeys] = useState({ accessToken: "", userId: "" });
+  const [igKeys, setIgKeys] = useState({ accessToken: "", igUserId: "" });
+  const [savingIg, setSavingIg] = useState(false);
+  const [savedIg, setSavedIg] = useState(false);
   const [postStyle, setPostStyle] = useState("mix");
   const [userPlan, setUserPlan] = useState("free");
   const [customStyles, setCustomStyles] = useState<{ id: string; name: string; desc: string; prompt: string }[]>([]);
@@ -236,6 +239,33 @@ export default function SettingsPage() {
       setTimeout(() => setSavedThreads(false), 3000);
     } catch (e) { console.error(e); }
     setSavingThreads(false);
+  }
+
+  async function handleSaveInstagramKeys() {
+    setSavingIg(true); setSavedIg(false);
+    try {
+      const keys = [
+        { key_name: "access_token", value: igKeys.accessToken },
+        { key_name: "ig_user_id", value: igKeys.igUserId },
+      ];
+      let allOk = true;
+      for (const k of keys) {
+        if (k.value.trim()) {
+          const res = await fetch("/api/apikeys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ provider: "instagram", key_name: k.key_name, value: k.value }),
+          });
+          if (!res.ok) { allOk = false; console.error("Instagram key save failed:", k.key_name, await res.text()); }
+        }
+      }
+      if (!allOk) { alert("Instagram APIキーの保存に失敗しました。"); setSavingIg(false); return; }
+      setSavedIg(true);
+      setSavedKeys(prev => [...prev.filter(k => !k.startsWith("instagram:")), "instagram:access_token", "instagram:ig_user_id"]);
+      setIgKeys({ accessToken: "", igUserId: "" });
+      setTimeout(() => setSavedIg(false), 3000);
+    } catch (e) { console.error(e); }
+    setSavingIg(false);
   }
 
   async function handleSaveStyleDefaults() {
@@ -672,6 +702,50 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Instagram APIキー（Businessプラン限定） */}
+          {userPlan === "business" && (<Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">Instagram APIキー</h2>
+                  <p className="text-sm text-gray-500 mt-1">Meta Graph APIを使ったInstagram投稿の認証情報を設定</p>
+                </div>
+                {isKeySaved("instagram") && (
+                  <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 設定済み</span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Access Token</label>
+                  <input type="password" value={igKeys.accessToken}
+                    onChange={(e) => setIgKeys(prev => ({ ...prev, accessToken: e.target.value }))}
+                    placeholder={isKeySaved("instagram") ? "••••••••（設定済み）" : "Instagram Graph APIのアクセストークン"}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Instagram User ID</label>
+                  <input type="text" value={igKeys.igUserId}
+                    onChange={(e) => setIgKeys(prev => ({ ...prev, igUserId: e.target.value }))}
+                    placeholder={isKeySaved("instagram") ? "••••••••（設定済み）" : "InstagramビジネスアカウントのユーザーID（数字）"}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                </div>
+                <p className="text-xs text-gray-400">Meta Developer Portal → Instagram Graph API → アクセストークンとInstagramビジネスアカウントIDを取得</p>
+                <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700">
+                  <p className="font-semibold">Instagram投稿には画像が必須です</p>
+                  <p className="mt-1">Instagramではテキストのみの投稿はできません。投稿時には必ず画像をアップロードしてください。</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button onClick={handleSaveInstagramKeys} disabled={savingIg || !igKeys.accessToken.trim() || !igKeys.igUserId.trim()}>
+                    {savingIg ? "保存中..." : "保存する"}
+                  </Button>
+                  {savedIg && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>)}
 
           {/* GPTs連携 */}
           <Card>

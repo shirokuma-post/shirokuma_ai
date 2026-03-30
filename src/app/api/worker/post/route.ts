@@ -137,6 +137,9 @@ async function processSlot(
   const style = (slot.style || "mix") as PostStyle;
   const postLength = (slot.length || "standard") as PostLength;
   const snsTarget = slot.target as SnsTarget;
+  if (snsTarget === "instagram" && plan !== "business") {
+    throw new Error("Instagram投稿はBusinessプラン限定です");
+  }
   const isSplit = snsTarget === "x" ? false : (slot.split || false);
   const customStylePrompt = ctx.customStyleDefs.find((s) => s.id === style)?.prompt;
 
@@ -202,6 +205,8 @@ async function processSlot(
       snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null);
     } else if (snsTarget === "threads") {
       snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText);
+    } else if (snsTarget === "instagram") {
+      snsResults.instagram = await postToSnsViaCron(supabase, userId, "instagram", hookText, null);
     }
   } catch (err: any) {
     snsResults[snsTarget] = { error: err.message };
@@ -286,6 +291,10 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
 
   const content = draft.content;
   const snsTarget = draft.sns_target || "x";
+  if (snsTarget === "instagram" && plan !== "business") {
+    await supabase.from("posts").update({ status: "failed", error_message: "Instagram投稿はBusinessプラン限定です" }).eq("id", postId);
+    throw new Error("Instagram投稿はBusinessプラン限定です");
+  }
   const imageUrl = draft.image_url || null;
 
   const draftSlotCfg = draft.slot_config as any;
@@ -301,6 +310,8 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
       snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null, imageUrl);
     } else if (snsTarget === "threads") {
       snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl);
+    } else if (snsTarget === "instagram") {
+      snsResults.instagram = await postToSnsViaCron(supabase, userId, "instagram", hookText, null, imageUrl);
     }
     // SNS APIからエラーが返った場合もチェック
     const result = snsResults[snsTarget];
@@ -362,7 +373,7 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
 async function postToSnsViaCron(
   supabase: any,
   userId: string,
-  provider: "x" | "threads",
+  provider: "x" | "threads" | "instagram",
   hookText: string,
   replyText: string | null,
   imageUrl?: string | null,
@@ -389,6 +400,12 @@ async function postToSnsViaCron(
       accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
     };
     if (!credentials.consumerKey) throw new Error("Incomplete X keys — consumerKey missing");
+  } else if (provider === "instagram") {
+    credentials = {
+      accessToken: keyMap["access_token"] || keyMap["accessToken"],
+      igUserId: keyMap["ig_user_id"] || keyMap["igUserId"],
+    };
+    if (!credentials.accessToken || !credentials.igUserId) throw new Error("Incomplete Instagram keys — accessToken or igUserId missing");
   } else {
     credentials = {
       accessToken: keyMap["access_token"] || keyMap["accessToken"],
