@@ -1,6 +1,8 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { decrypt } from "@/lib/crypto";
+import { isUrlSafe } from "@/lib/url-validation";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/generate-caption
@@ -11,11 +13,22 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // レート制限: 1分に5回まで
+  const rl = await checkRateLimit(`caption:${user.id}`, 5, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "リクエストが多すぎます。少し待ってからお試しください。" }, { status: 429 });
+  }
+
   const body = await request.json();
   const { imageUrl, snsTarget = "x", style = "kizuki" } = body;
 
   if (!imageUrl) {
     return NextResponse.json({ error: "imageUrl is required" }, { status: 400 });
+  }
+
+  // SSRF防止: 画像URLの検証
+  if (!isUrlSafe(imageUrl)) {
+    return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
   }
 
   // ユーザーのAIキーを取得
@@ -81,7 +94,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ caption: caption.trim() });
   } catch (err: any) {
     console.error("Caption generation error:", err);
-    return NextResponse.json({ error: "キャプション生成に失敗: " + (err.message || "不明なエラー") }, { status: 500 });
+    return NextResponse.json({ error: "キャプション生成に失敗しました。しばらく待ってからお試しください。" }, { status: 500 });
   }
 }
 

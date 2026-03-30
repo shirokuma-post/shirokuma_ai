@@ -17,6 +17,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
     }
 
+    // プロバイダのバリデーション
+    const VALID_PROVIDERS = ["x", "threads", "instagram"];
+    if (!provider || !VALID_PROVIDERS.includes(provider)) {
+      return NextResponse.json({ error: "無効なプロバイダです" }, { status: 400 });
+    }
+
     // 画像URLのSSRF防止チェック
     if (imageUrl && !isUrlSafe(imageUrl)) {
       return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });

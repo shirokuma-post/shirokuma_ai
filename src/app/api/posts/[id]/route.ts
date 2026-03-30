@@ -15,6 +15,7 @@ import {
 import type { PostStyle } from "@/types/database";
 import { buildLearningContext } from "@/lib/ai/learning-context";
 import { decrypt } from "@/lib/crypto";
+import { isUrlSafe } from "@/lib/url-validation";
 
 // PATCH /api/posts/[id] — 編集・トグル
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -29,7 +30,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (body.content !== undefined) updates.content = body.content;
     if (body.auto_post !== undefined) updates.auto_post = body.auto_post;
-    if (body.image_url !== undefined) updates.image_url = body.image_url;
+    if (body.image_url !== undefined) {
+      if (body.image_url !== null && !isUrlSafe(body.image_url)) {
+        return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
+      }
+      updates.image_url = body.image_url;
+    }
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No updates" }, { status: 400 });
@@ -178,6 +184,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ post: updated });
   } catch (error: any) {
     console.error("[REGENERATE]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "再生成に失敗しました" }, { status: 500 });
   }
 }

@@ -1,8 +1,10 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const MIME_TO_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp" };
 const BUCKET = "post-images";
 
 export async function POST(request: Request) {
@@ -11,6 +13,12 @@ export async function POST(request: Request) {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // レート制限: 1分に10回まで
+  const rl = await checkRateLimit(`upload:${user.id}`, 10, 60_000);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "アップロードが多すぎます。少し待ってからお試しください。" }, { status: 429 });
   }
 
   try {
@@ -29,8 +37,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ファイルサイズは5MB以下にしてください" }, { status: 400 });
     }
 
-    // ファイル名: user_id/timestamp_random.ext
-    const ext = file.name.split(".").pop() || "jpg";
+    // ファイル名: user_id/timestamp_random.ext（MIMEタイプから拡張子を決定）
+    const ext = MIME_TO_EXT[file.type] || "jpg";
     const fileName = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
