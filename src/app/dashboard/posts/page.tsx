@@ -145,8 +145,13 @@ export default function PostsPage() {
         // Sort by slot_index
         drafts.sort((a: Post, b: Post) => (a.slot_index ?? 99) - (b.slot_index ?? 99));
         setTodayDrafts(drafts);
-        // 未登録ドラフトがあるか判定
-        const hasUnregistered = drafts.some((d: Post) => d.status === "draft" && !d.auto_post);
+        // 未登録ドラフトがあるか判定（投稿時間を過ぎたものは除外）
+        const now = new Date();
+        const hasUnregistered = drafts.some((d: Post) => {
+          if (d.status !== "draft" || d.auto_post) return false;
+          if (d.scheduled_at && new Date(d.scheduled_at) < now) return false;
+          return true;
+        });
         setNeedsRegistration(hasUnregistered);
       }
     } catch {}
