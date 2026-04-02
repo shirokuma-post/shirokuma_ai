@@ -441,7 +441,7 @@ export default function PostsPage() {
   async function handlePost() {
     if (!editText) return;
     const provider = previewTarget;
-    if (provider === "instagram" && !previewImageUrl && !previewVideoUrl) {
+    if (provider === "instagram" && !previewImageUrl && previewMediaUrls.length === 0) {
       setPostResult("エラー: Instagramはメディア必須です。画像または動画をアップロードしてください。");
       return;
     }
