@@ -9,15 +9,31 @@ import { isUrlSafe } from "@/lib/url-validation";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { provider, text, splitReply, imageUrl, credentials: externalCreds } = body;
+    const { provider, text, splitReply, imageUrl, videoUrl, mediaUrls, credentials: externalCreds } = body;
 
     if (!text) {
       return NextResponse.json({ error: "テキストが空です" }, { status: 400 });
     }
 
+    // プロバイダーバリデーション
+    if (!["x", "threads", "instagram"].includes(provider)) {
+      return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
+    }
+
     // 画像URLのSSRF防止チェック
     if (imageUrl && !isUrlSafe(imageUrl)) {
       return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
+    }
+    if (videoUrl && !isUrlSafe(videoUrl)) {
+      return NextResponse.json({ error: "無効な動画URLです" }, { status: 400 });
+    }
+    // カルーセル用: 複数画像URLの検証
+    if (mediaUrls && Array.isArray(mediaUrls)) {
+      for (const m of mediaUrls) {
+        if (m.url && !isUrlSafe(m.url)) {
+          return NextResponse.json({ error: "無効なメディアURLが含まれています" }, { status: 400 });
+        }
+      }
     }
 
     // 外部から credentials が渡された場合はそのまま使う（cron からの呼び出し用）
@@ -45,10 +61,10 @@ export async function POST(request: Request) {
       // 日次リセット + プラン上限チェック（アトミック）
       const { data: profile } = await supabase
         .from("profiles")
-        .select("plan, daily_post_count, daily_reset_at")
+        .select("post_plan, daily_post_count, daily_reset_at")
         .eq("id", authUser.id)
         .single();
-      const plan = (profile?.plan || "free") as PlanId;
+      const plan = (profile?.post_plan || "free") as PlanId;
 
       // 日次リセット（ダッシュボード以外からも対応）
       const today = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" })).toISOString().split("T")[0];
@@ -68,11 +84,19 @@ export async function POST(request: Request) {
         );
       }
 
+      // Instagram: Business プランのみ
+      if (provider === "instagram") {
+        if (plan !== "business") {
+          return NextResponse.json({ error: "Instagram投稿はBusinessプラン限定です" }, { status: 403 });
+        }
+      }
+
       if (provider === "x") {
         const { data: xKeys } = await supabase
           .from("api_keys")
           .select("*")
           .eq("user_id", authUser.id)
+          .eq("product", "post")
           .eq("provider", "x");
 
         if (!xKeys?.length) {
@@ -99,6 +123,7 @@ export async function POST(request: Request) {
           .from("api_keys")
           .select("*")
           .eq("user_id", authUser.id)
+          .eq("product", "post")
           .eq("provider", "threads");
 
         if (!threadsKeys?.length) {
@@ -118,6 +143,31 @@ export async function POST(request: Request) {
         if (!credentials.accessToken || !credentials.userId) {
           return NextResponse.json({ error: "Threads APIキーが不完全です。アクセストークンとユーザーIDを設定してください。" }, { status: 400 });
         }
+      } else if (provider === "instagram") {
+        const { data: igKeys } = await supabase
+          .from("api_keys")
+          .select("*")
+          .eq("user_id", authUser.id)
+          .eq("product", "post")
+          .eq("provider", "instagram");
+
+        if (!igKeys?.length) {
+          return NextResponse.json({ error: "Instagram APIキーが設定されていません。設定ページから登録してください。" }, { status: 400 });
+        }
+
+        const keyMap: Record<string, string> = {};
+        for (const k of igKeys) {
+          keyMap[k.key_name] = decrypt(k.encrypted_value);
+        }
+
+        credentials = {
+          accessToken: keyMap["access_token"] || keyMap["accessToken"],
+          igUserId: keyMap["ig_user_id"] || keyMap["igUserId"],
+        };
+
+        if (!credentials.accessToken || !credentials.igUserId) {
+          return NextResponse.json({ error: "Instagram APIキーが不完全です。アクセストークンとInstagramユーザーIDを設定してください。" }, { status: 400 });
+        }
       } else {
         return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
       }
@@ -128,7 +178,11 @@ export async function POST(request: Request) {
     if (provider === "x") {
       result = splitReply ? await postXThread(credentials, text, splitReply) : await postToX(credentials, text, imageUrl);
     } else if (provider === "threads") {
-      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text, imageUrl);
+      const mediaUrl = videoUrl || imageUrl;
+      const mediaType = videoUrl ? "video" : imageUrl ? "image" : undefined;
+      result = splitReply ? await postThreadsThread(credentials, text, splitReply) : await postToThreads(credentials, text, mediaUrl, mediaType);
+    } else if (provider === "instagram") {
+      result = await postToInstagram(credentials, text, { imageUrl, videoUrl, mediaUrls });
     } else {
       return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
@@ -139,7 +193,7 @@ export async function POST(request: Request) {
         const resultData = await result.clone().json();
         const isSuccess = result.ok;
         const supabase = createServerSupabase();
-        await supabase.from("posts").insert({
+        await supabase.schema('post').from("posts").insert({
           user_id: authUserId,
           content: splitReply ? text + "\n\n---\n\n" + splitReply : text,
           status: isSuccess ? "posted" : "failed",
@@ -151,10 +205,10 @@ export async function POST(request: Request) {
         if (isSuccess) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("plan")
+            .select("post_plan")
             .eq("id", authUserId)
             .single();
-          const userPlan = (profile?.plan || "free") as PlanId;
+          const userPlan = (profile?.post_plan || "free") as PlanId;
           const planLimit = getPostLimit(userPlan);
           await supabase.rpc("increment_daily_post_count", {
             p_user_id: authUserId,
@@ -283,16 +337,21 @@ async function postXThread(creds: any, hookText: string, replyText: string) {
 }
 
 // ---------- Threads posting ----------
-async function postToThreads(creds: { accessToken: string; userId: string }, text: string, imageUrl?: string) {
-  // 画像がある場合は IMAGE タイプ、なければ TEXT タイプ
-  const containerPayload: any = imageUrl
-    ? { media_type: "IMAGE", image_url: imageUrl, text, access_token: creds.accessToken }
-    : { media_type: "TEXT", text, access_token: creds.accessToken };
+async function postToThreads(creds: { accessToken: string; userId: string }, text: string, mediaUrl?: string, mediaType?: "image" | "video") {
+  let containerPayload: any;
+  if (mediaUrl && mediaType === "video") {
+    containerPayload = { media_type: "VIDEO", video_url: mediaUrl, text, access_token: creds.accessToken };
+  } else if (mediaUrl) {
+    containerPayload = { media_type: "IMAGE", image_url: mediaUrl, text, access_token: creds.accessToken };
+  } else {
+    containerPayload = { media_type: "TEXT", text, access_token: creds.accessToken };
+  }
 
   const createRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(containerPayload) });
   if (!createRes.ok) { const e = await createRes.text(); return NextResponse.json({ error: `Threads error: ${e}` }, { status: createRes.status }); }
   const { id: cid } = await createRes.json();
-  await new Promise((r) => setTimeout(r, 2000));
+  // 動画は処理に時間がかかるため長めに待機
+  await new Promise((r) => setTimeout(r, mediaType === "video" ? 10000 : 2000));
   const pubRes = await fetch(`https://graph.threads.net/v1.0/${creds.userId}/threads_publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creation_id: cid, access_token: creds.accessToken }) });
   if (!pubRes.ok) { const e = await pubRes.text(); return NextResponse.json({ error: `Threads publish error: ${e}` }, { status: pubRes.status }); }
   const data = await pubRes.json();
@@ -316,4 +375,143 @@ async function postThreadsThread(creds: { accessToken: string; userId: string },
   if (!rpRes.ok) { const e = await rpRes.text(); return NextResponse.json({ error: `Threads reply publish error: ${e}`, hookId, partial: true }, { status: rpRes.status }); }
   const replyData = await rpRes.json();
   return NextResponse.json({ id: hookId, replyId: replyData.id, thread: true });
+}
+
+// ---------- Instagram posting ----------
+async function postToInstagram(
+  creds: { accessToken: string; igUserId: string },
+  caption: string,
+  media: { imageUrl?: string; videoUrl?: string; mediaUrls?: { url: string; type: string }[] },
+) {
+  const { accessToken, igUserId } = creds;
+  const apiBase = `https://graph.facebook.com/v19.0/${igUserId}`;
+
+  // カルーセル: 複数画像 (2枚以上)
+  const carouselItems = media.mediaUrls?.filter((m) => m.type === "image" && m.url) || [];
+  // 単一画像もカルーセルに含める
+  if (carouselItems.length === 0 && media.imageUrl) {
+    carouselItems.push({ url: media.imageUrl, type: "image" });
+  }
+
+  if (carouselItems.length >= 2) {
+    // --- CAROUSEL ---
+    // Step 1: 各画像のアイテムコンテナを作成
+    const childIds: string[] = [];
+    for (const item of carouselItems) {
+      const childRes = await fetch(`${apiBase}/media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: item.url,
+          is_carousel_item: true,
+          access_token: accessToken,
+        }),
+      });
+      if (!childRes.ok) {
+        const e = await childRes.text();
+        return NextResponse.json({ error: `Instagram carousel item error: ${e}` }, { status: childRes.status });
+      }
+      const { id } = await childRes.json();
+      childIds.push(id);
+    }
+
+    // Step 2: カルーセルコンテナを作成
+    const carouselRes = await fetch(`${apiBase}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        media_type: "CAROUSEL",
+        children: childIds,
+        caption,
+        access_token: accessToken,
+      }),
+    });
+    if (!carouselRes.ok) {
+      const e = await carouselRes.text();
+      return NextResponse.json({ error: `Instagram carousel error: ${e}` }, { status: carouselRes.status });
+    }
+    const { id: carouselId } = await carouselRes.json();
+
+    // Step 3: 処理待ち + パブリッシュ
+    await new Promise((r) => setTimeout(r, 5000));
+    const pubRes = await fetch(`${apiBase}/media_publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creation_id: carouselId, access_token: accessToken }),
+    });
+    if (!pubRes.ok) {
+      const e = await pubRes.text();
+      return NextResponse.json({ error: `Instagram publish error: ${e}` }, { status: pubRes.status });
+    }
+    const data = await pubRes.json();
+    return NextResponse.json({ id: data.id, type: "carousel", items: childIds.length });
+  }
+
+  if (media.videoUrl) {
+    // --- REELS ---
+    const containerRes = await fetch(`${apiBase}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        media_type: "REELS",
+        video_url: media.videoUrl,
+        caption,
+        access_token: accessToken,
+      }),
+    });
+    if (!containerRes.ok) {
+      const e = await containerRes.text();
+      return NextResponse.json({ error: `Instagram Reels error: ${e}` }, { status: containerRes.status });
+    }
+    const { id: containerId } = await containerRes.json();
+
+    // 動画処理待ち（長め）
+    await new Promise((r) => setTimeout(r, 15000));
+    const pubRes = await fetch(`${apiBase}/media_publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creation_id: containerId, access_token: accessToken }),
+    });
+    if (!pubRes.ok) {
+      const e = await pubRes.text();
+      return NextResponse.json({ error: `Instagram Reels publish error: ${e}` }, { status: pubRes.status });
+    }
+    const data = await pubRes.json();
+    return NextResponse.json({ id: data.id, type: "reels" });
+  }
+
+  if (media.imageUrl || carouselItems.length === 1) {
+    // --- 単一画像 ---
+    const imgUrl = media.imageUrl || carouselItems[0].url;
+    const containerRes = await fetch(`${apiBase}/media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image_url: imgUrl,
+        caption,
+        access_token: accessToken,
+      }),
+    });
+    if (!containerRes.ok) {
+      const e = await containerRes.text();
+      return NextResponse.json({ error: `Instagram error: ${e}` }, { status: containerRes.status });
+    }
+    const { id: containerId } = await containerRes.json();
+
+    await new Promise((r) => setTimeout(r, 3000));
+    const pubRes = await fetch(`${apiBase}/media_publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ creation_id: containerId, access_token: accessToken }),
+    });
+    if (!pubRes.ok) {
+      const e = await pubRes.text();
+      return NextResponse.json({ error: `Instagram publish error: ${e}` }, { status: pubRes.status });
+    }
+    const data = await pubRes.json();
+    return NextResponse.json({ id: data.id, type: "image" });
+  }
+
+  // Instagram requires media
+  return NextResponse.json({ error: "Instagram投稿には画像または動画が必須です" }, { status: 400 });
 }

@@ -79,7 +79,7 @@ export async function GET(request: Request) {
         }));
 
         const { error: insertError } = await supabase
-          .from("daily_trends")
+          .schema('post').from("daily_trends")
           .insert(rows);
 
         if (insertError) {
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     // --- ローカルエリアRSS取得 ---
     // local_area が設定されているユーザーの地域ニュースを取得
     const { data: localConfigs } = await supabase
-      .from("schedule_configs")
+      .schema('post').from("schedule_configs")
       .select("user_id, local_area")
       .not("local_area", "is", null)
       .neq("local_area", "");
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
     if (localConfigs?.length) {
       // 既存のローカルトレンドを削除（毎回フレッシュに取得）
       await supabase
-        .from("daily_trends")
+        .schema('post').from("daily_trends")
         .delete()
         .eq("category", "local");
 
@@ -136,7 +136,7 @@ export async function GET(request: Request) {
             user_id: cfg.user_id,
           }));
 
-          const { error: localErr } = await supabase.from("daily_trends").insert(rows);
+          const { error: localErr } = await supabase.schema('post').from("daily_trends").insert(rows);
           if (localErr) {
             errors.push(`local(${cfg.local_area}): ${localErr.message}`);
           } else {
@@ -151,7 +151,7 @@ export async function GET(request: Request) {
     // Clean up old trends (keep only last 2 days)
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     await supabase
-      .from("daily_trends")
+      .schema('post').from("daily_trends")
       .delete()
       .lt("fetched_at", twoDaysAgo)
       .is("user_id", null); // グローバルトレンドのみ期限切れ削除（localは毎回フレッシュ）

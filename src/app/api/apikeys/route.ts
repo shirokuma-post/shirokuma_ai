@@ -14,7 +14,8 @@ export async function GET() {
   const { data, error } = await supabase
     .from("api_keys")
     .select("id, provider, key_name, is_valid, last_verified_at, created_at")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("product", "post");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -23,7 +24,7 @@ export async function GET() {
   return NextResponse.json({ keys: data });
 }
 
-// APIキー保存
+// APIキー保存（select→update/insert パターン、統合DBにはupsert用ユニーク制約がないため）
 export async function POST(request: Request) {
   const supabase = createServerSupabase();
   const { data: { user } } = await supabase.auth.getUser();
@@ -33,29 +34,52 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { provider, key_name, value, metadata } = body;
+  const { provider, key_name, value } = body;
 
   if (!provider || !key_name || !value) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // Upsert: 同じprovider+key_nameがあれば更新
-  const { data, error } = await supabase
+  // 既存キーを検索
+  const { data: existing } = await supabase
     .from("api_keys")
-    .upsert(
-      {
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("product", "post")
+    .eq("provider", provider)
+    .eq("key_name", key_name)
+    .single();
+
+  let data, error;
+
+  if (existing) {
+    // 更新
+    ({ data, error } = await supabase
+      .from("api_keys")
+      .update({
+        encrypted_value: encrypt(value),
+        is_valid: true,
+        last_verified_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select("id, provider, key_name, is_valid")
+      .single());
+  } else {
+    // 新規作成
+    ({ data, error } = await supabase
+      .from("api_keys")
+      .insert({
         user_id: user.id,
+        product: "post",
         provider,
         key_name,
         encrypted_value: encrypt(value),
-        metadata,
         is_valid: true,
         last_verified_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,provider,key_name" }
-    )
-    .select("id, provider, key_name, is_valid")
-    .single();
+      })
+      .select("id, provider, key_name, is_valid")
+      .single());
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

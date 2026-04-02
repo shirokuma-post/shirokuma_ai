@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import type { VoiceProfile } from "@/lib/ai/generate-post";
 import TagInput from "@/components/TagInput";
 
-type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; created_at: string };
+type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; created_at: string; image_url: string | null; video_url: string | null; media_urls: { url: string; type: string }[] | null };
 type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
-type SnsTarget = "x" | "threads";
+type SnsTarget = "x" | "threads" | "instagram";
 
 const STYLE_LABELS: Record<string, string> = { kizuki: "気づき", toi: "問い", honne: "本音", yorisoi: "寄り添い", osusowake: "おすそわけ", monogatari: "物語", uragawa: "裏側", yoin: "余韻", hitokoto: "ひとこと", mix: "おまかせ", ai_optimized: "AI最適化", paradigm_break: "気づき", provocative: "問い", flip: "裏側", poison_story: "余韻", boyaki: "本音", yueki: "おすそわけ", jitsuwa: "物語", kyoukan: "寄り添い" };
 const STYLE_OPTIONS = [
@@ -92,6 +92,13 @@ export default function PostsPage() {
   const [registering, setRegistering] = useState(false);
   const [needsRegistration, setNeedsRegistration] = useState(false);
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
+
+  // カルーセル画像（ドラフト用: draftId → urls）
+  const [draftMediaUrls, setDraftMediaUrls] = useState<Record<string, { url: string; type: string }[]>>({});
+  const [uploadingMedia, setUploadingMedia] = useState<string | null>(null);
+  // プレビュー用メディア
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewMediaUrls, setPreviewMediaUrls] = useState<{ url: string; type: string }[]>([]);
 
   // 承認待ち (legacy support)
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
@@ -260,6 +267,66 @@ export default function PostsPage() {
     } catch {}
   }
 
+  // --- メディアアップロード ---
+  async function handleMediaUpload(file: File): Promise<{ url: string; mediaType: string } | null> {
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload-image", { method: "POST", body: formData });
+      if (!res.ok) { const d = await res.json(); alert(d.error || "アップロード失敗"); return null; }
+      const data = await res.json();
+      return { url: data.url, mediaType: data.mediaType || "image" };
+    } catch { alert("アップロードに失敗しました"); return null; }
+  }
+
+  async function handleDraftMediaUpload(draftId: string, files: FileList) {
+    setUploadingMedia(draftId);
+    const existing = draftMediaUrls[draftId] || [];
+    const newItems: { url: string; type: string }[] = [...existing];
+    for (const file of Array.from(files)) {
+      const result = await handleMediaUpload(file);
+      if (result) newItems.push({ url: result.url, type: result.mediaType });
+    }
+    setDraftMediaUrls(prev => ({ ...prev, [draftId]: newItems }));
+    // DBにも保存
+    await fetch(`/api/posts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        media_urls: newItems,
+        image_url: newItems.length > 0 ? newItems[0].url : null,
+      }),
+    });
+    setUploadingMedia(null);
+  }
+
+  function handleDraftMediaRemove(draftId: string, index: number) {
+    const existing = draftMediaUrls[draftId] || [];
+    const updated = existing.filter((_, i) => i !== index);
+    setDraftMediaUrls(prev => ({ ...prev, [draftId]: updated }));
+    // DBにも保存
+    fetch(`/api/posts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        media_urls: updated,
+        image_url: updated.length > 0 ? updated[0].url : null,
+      }),
+    });
+  }
+
+  async function handlePreviewMediaUpload(files: FileList) {
+    const newItems: { url: string; type: string }[] = [...previewMediaUrls];
+    for (const file of Array.from(files)) {
+      const result = await handleMediaUpload(file);
+      if (result) newItems.push({ url: result.url, type: result.mediaType });
+    }
+    setPreviewMediaUrls(newItems);
+    if (newItems.length > 0 && !previewImageUrl) {
+      setPreviewImageUrl(newItems[0].url);
+    }
+  }
+
   async function handleManualPost(draft: Post) {
     setPosting(draft.id);
     try {
@@ -273,6 +340,16 @@ export default function PostsPage() {
 
       const payload: any = { provider: draft.sns_target || "x", text: hookText };
       if (replyText) payload.splitReply = replyText;
+      // メディア添付
+      const draftMedia = draftMediaUrls[draft.id] || draft.media_urls || [];
+      if (draftMedia.length > 1) {
+        payload.mediaUrls = draftMedia;
+      } else if (draftMedia.length === 1) {
+        payload.imageUrl = draftMedia[0].url;
+      } else if (draft.image_url) {
+        payload.imageUrl = draft.image_url;
+      }
+      if (draft.video_url) payload.videoUrl = draft.video_url;
 
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
@@ -285,7 +362,7 @@ export default function PostsPage() {
         });
         // Actually we need to mark it as posted via a separate mechanism
         // For now, refetch
-        setPostResult(`${draft.sns_target === "threads" ? "Threads" : "X"} に投稿しました！`);
+        setPostResult(`${draft.sns_target === "threads" ? "Threads" : draft.sns_target === "instagram" ? "Instagram" : "X"} に投稿しました！`);
         fetchTodayDrafts();
         fetchPosts(1);
       } else {
@@ -324,11 +401,18 @@ export default function PostsPage() {
     try {
       const payload: any = { provider, text: editText };
       if (splitReply && editReply) payload.splitReply = editReply;
+      if (previewMediaUrls.length > 1) {
+        payload.mediaUrls = previewMediaUrls;
+      } else if (previewMediaUrls.length === 1) {
+        payload.imageUrl = previewMediaUrls[0].url;
+      } else if (previewImageUrl) {
+        payload.imageUrl = previewImageUrl;
+      }
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok) {
-        const label = provider === "x" ? "X" : "Threads";
-        setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); fetchPosts(1);
+        const label = provider === "x" ? "X" : provider === "threads" ? "Threads" : "Instagram";
+        setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewMediaUrls([]); setPreviewImageUrl(null); fetchPosts(1);
       } else { setPostResult("エラー: " + (data.error || data.message || "投稿に失敗")); }
     } catch (e) { setPostResult("エラー: 通信に失敗しました"); } finally { setPosting(null); }
   }
@@ -350,10 +434,11 @@ export default function PostsPage() {
   }
   function getSnsIcons(ids: any) {
     if (!ids) return null;
-    return <div className="flex gap-1">{ids.x && <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>}{ids.threads && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}</div>;
+    return <div className="flex gap-1">{ids.x && <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>}{ids.threads && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}{ids.instagram && <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded">IG</span>}</div>;
   }
   function getSnsLabel(target: string | null) {
     if (target === "threads") return <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>;
+    if (target === "instagram") return <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded">Instagram</span>;
     return <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span>;
   }
 
@@ -516,6 +601,47 @@ export default function PostsPage() {
                         return <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{cleanContent}</p>;
                       })()}
 
+                      {/* メディア添付 */}
+                      {!isEditing && (() => {
+                        const media = draftMediaUrls[draft.id] || draft.media_urls || [];
+                        const isInstagram = draft.sns_target === "instagram";
+                        const isXTarget = draft.sns_target === "x";
+                        return (
+                          <div className="mt-2">
+                            {media.length > 0 && (
+                              <div className="flex gap-2 flex-wrap mb-2">
+                                {media.map((m, idx) => (
+                                  <div key={idx} className="relative group">
+                                    {m.type === "video" ? (
+                                      <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">VIDEO</div>
+                                    ) : (
+                                      <img src={m.url} alt="" className="w-16 h-16 object-cover rounded border border-gray-200" />
+                                    )}
+                                    <button
+                                      onClick={() => handleDraftMediaRemove(draft.id, idx)}
+                                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >×</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <label className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 cursor-pointer">
+                              <input
+                                type="file"
+                                accept={isXTarget ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"}
+                                multiple={isInstagram}
+                                className="hidden"
+                                onChange={(e) => e.target.files && handleDraftMediaUpload(draft.id, e.target.files)}
+                              />
+                              {uploadingMedia === draft.id ? "⏳ アップロード中..." : isInstagram ? `📸 画像追加${media.length > 0 ? `(${media.length})` : ""}（複数可）` : isXTarget ? "📷 画像" : "📷 画像/動画"}
+                            </label>
+                            {isInstagram && media.length === 0 && (
+                              <span className="ml-2 text-xs text-amber-600">※ 画像必須</span>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Actions */}
                       {!isEditing && (
                         <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
@@ -579,6 +705,13 @@ export default function PostsPage() {
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "threads" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
                 <span className="w-4 h-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded text-[10px] flex items-center justify-center font-bold">T</span>
                 Threads 向け
+              </button>
+            )}
+            {isMultiSns && (
+              <button onClick={() => setSnsTab("instagram")}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${snsTab === "instagram" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                <span className="w-4 h-4 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded text-[10px] flex items-center justify-center font-bold">I</span>
+                Instagram 向け
               </button>
             )}
             {!isMultiSns && (
@@ -792,16 +925,16 @@ export default function PostsPage() {
                   })}
                 </div>
               </div>
-              {!isX && (
+              {snsTab === "threads" && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
                   <button onClick={() => { if (!canUseSplit) { window.location.href = "/pricing"; return; } setThSplitMode(!thSplitMode); }} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (thSplitMode ? "border-purple-500 bg-purple-50 text-purple-700" : !canUseSplit ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{thSplitMode ? "✓ " : ""}フック → リプ{!canUseSplit && " 🔒"}</button>
                 </div>
               )}
-              {isX && (
+              {(isX || snsTab === "instagram") && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
-                  <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">X API制限により不可</span>
+                  <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">{isX ? "X" : "Instagram"} API制限により不可</span>
                 </div>
               )}
             </div>
@@ -809,7 +942,7 @@ export default function PostsPage() {
 
           <div className="mt-4">
             <Button onClick={handleGenerate} disabled={generating || limitReached} size="sm">
-              {generating ? "生成中..." : limitReached ? "上限に達しました" : isX ? "X 向けに生成" : "Threads 向けに生成"}
+              {generating ? "生成中..." : limitReached ? "上限に達しました" : isX ? "X 向けに生成" : snsTab === "instagram" ? "Instagram 向けに生成" : "Threads 向けに生成"}
             </Button>
           </div>
         </CardContent>
@@ -823,7 +956,7 @@ export default function PostsPage() {
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold text-gray-900">プレビュー</h2>
                 {splitReply && <span className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 rounded-full">スレッド投稿</span>}
-                {previewTarget === "x" ? <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span> : <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}
+                {previewTarget === "x" ? <span className="text-xs px-1.5 py-0.5 bg-black text-white rounded">X</span> : previewTarget === "instagram" ? <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 text-white rounded">Instagram</span> : <span className="text-xs px-1.5 py-0.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded">Threads</span>}
               </div>
               <span className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded-full">未投稿</span>
             </div>
@@ -844,10 +977,44 @@ export default function PostsPage() {
                 <p className="text-xs text-gray-400 mt-1">{editReply.length} 文字</p>
               </div>
             )}
+            {/* メディア添付 */}
+            <div className="mb-4">
+              {previewMediaUrls.length > 0 && (
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {previewMediaUrls.map((m, idx) => (
+                    <div key={idx} className="relative group">
+                      {m.type === "video" ? (
+                        <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">VIDEO</div>
+                      ) : (
+                        <img src={m.url} alt="" className="w-16 h-16 object-cover rounded border border-gray-200" />
+                      )}
+                      <button
+                        onClick={() => setPreviewMediaUrls(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 cursor-pointer">
+                <input
+                  type="file"
+                  accept={previewTarget === "x" ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"}
+                  multiple={previewTarget === "instagram"}
+                  className="hidden"
+                  onChange={(e) => e.target.files && handlePreviewMediaUpload(e.target.files)}
+                />
+                {previewTarget === "instagram" ? `📸 画像追加${previewMediaUrls.length > 0 ? `(${previewMediaUrls.length})` : ""}（複数可）` : previewTarget === "x" ? "📷 画像を追加" : "📷 画像/動画を追加"}
+              </label>
+              {previewTarget === "instagram" && previewMediaUrls.length === 0 && (
+                <span className="ml-2 text-xs text-amber-600">※ Instagram投稿には画像が必須です</span>
+              )}
+            </div>
+
             <div className="flex gap-2">
-              <Button size="sm" onClick={handlePost} disabled={!!posting}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : "Threads に投稿"}</Button>
+              <Button size="sm" onClick={handlePost} disabled={!!posting || (previewTarget === "instagram" && previewMediaUrls.length === 0)}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : previewTarget === "instagram" ? "Instagram に投稿" : "Threads に投稿"}</Button>
               <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating || limitReached}>再生成</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); }}>破棄</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewMediaUrls([]); setPreviewImageUrl(null); }}>破棄</Button>
             </div>
           </CardContent>
         </Card>

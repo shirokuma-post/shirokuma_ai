@@ -87,7 +87,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, mode: "post-draft", draftPostId });
     } catch (err: any) {
       console.error(`[WORKER] post-draft error for ${draftPostId}:`, err.message);
-      await supabase.from("posts").update({ status: "failed", error_message: err.message }).eq("id", draftPostId);
+      await supabase.schema('post').from("posts").update({ status: "failed", error_message: err.message }).eq("id", draftPostId);
       return NextResponse.json({ error: err.message, draftPostId }, { status: 500 });
     }
   }
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, userId, time: slot.time, target: slot.target });
   } catch (err: any) {
     console.error(`[WORKER] Error for user ${userId} slot ${slot.time}:`, err.message);
-    await supabase.from("schedule_executions").insert({
+    await supabase.schema('post').from("schedule_executions").insert({
       user_id: userId,
       scheduled_time: slot.time,
       status: "failed",
@@ -123,8 +123,8 @@ async function processSlot(
 ) {
   // 日次リセット + プラン上限チェック
   await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
-  const { data: profileForLimit } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
-  const plan = (profileForLimit?.plan || "free") as PlanId;
+  const { data: profileForLimit } = await supabase.from("profiles").select("post_plan, daily_post_count").eq("id", userId).single();
+  const plan = (profileForLimit?.post_plan || "free") as PlanId;
   const dailyCount = profileForLimit?.daily_post_count || 0;
   if (!canPost(plan, dailyCount)) {
     throw new Error(`Daily post limit reached (plan=${plan}, count=${dailyCount})`);
@@ -173,7 +173,7 @@ async function processSlot(
   // 承認ワークフロー
   if (requireApproval) {
     const { data: post } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .insert({
         user_id: userId,
         content: savedContent,
@@ -184,7 +184,7 @@ async function processSlot(
       .select()
       .single();
 
-    await supabase.from("schedule_executions").insert({
+    await supabase.schema('post').from("schedule_executions").insert({
       user_id: userId,
       scheduled_time: slot.time,
       status: "success",
@@ -195,6 +195,11 @@ async function processSlot(
     return;
   }
 
+  // Instagram: Business プランのみ
+  if (snsTarget === "instagram" && plan !== "business") {
+    throw new Error("Instagram投稿はBusinessプラン限定です");
+  }
+
   // SNS投稿
   const snsResults: Record<string, any> = {};
   try {
@@ -202,6 +207,8 @@ async function processSlot(
       snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null);
     } else if (snsTarget === "threads") {
       snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText);
+    } else if (snsTarget === "instagram") {
+      snsResults.instagram = await postToSnsViaCron(supabase, userId, "instagram", hookText, null);
     }
   } catch (err: any) {
     snsResults[snsTarget] = { error: err.message };
@@ -209,7 +216,7 @@ async function processSlot(
 
   // DB保存
   const { data: post } = await supabase
-    .from("posts")
+    .schema('post').from("posts")
     .insert({
       user_id: userId,
       content: savedContent,
@@ -222,7 +229,7 @@ async function processSlot(
     .select()
     .single();
 
-  await supabase.from("schedule_executions").insert({
+  await supabase.schema('post').from("schedule_executions").insert({
     user_id: userId,
     scheduled_time: slot.time,
     status: "success",
@@ -245,7 +252,7 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
   // アトミックにステータスを "sending" に変更（先着1件のみ成功）
   // "draft" or "posting" → "sending" への遷移を試みる。失敗 = 他のworkerが先に取得済み
   const { data: claimed, error: claimError } = await supabase
-    .from("posts")
+    .schema('post').from("posts")
     .update({ status: "sending" })
     .eq("id", postId)
     .in("status", ["draft", "posting"])
@@ -267,7 +274,7 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
   const diffMinutes = (nowMs - scheduledMs) / 60_000;
   if (diffMinutes > 30) {
     console.log(`[WORKER] Skipping ${postId}: ${Math.round(diffMinutes)}min past scheduled time (${draft.scheduled_at})`);
-    await supabase.from("posts").update({
+    await supabase.schema('post').from("posts").update({
       status: "failed",
       error_message: `投稿時間を${Math.round(diffMinutes)}分超過（スキップ）`,
     }).eq("id", postId);
@@ -276,17 +283,25 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
 
   // 日次リセット + プラン上限チェック
   await supabase.rpc("reset_daily_count_if_needed", { p_user_id: userId });
-  const { data: profile } = await supabase.from("profiles").select("plan, daily_post_count").eq("id", userId).single();
-  const plan = (profile?.plan || "free") as PlanId;
+  const { data: profile } = await supabase.from("profiles").select("post_plan, daily_post_count").eq("id", userId).single();
+  const plan = (profile?.post_plan || "free") as PlanId;
   const dailyCount = profile?.daily_post_count || 0;
   if (!canPost(plan, dailyCount)) {
-    await supabase.from("posts").update({ status: "failed", error_message: "本日の投稿上限に達しました" }).eq("id", postId);
+    await supabase.schema('post').from("posts").update({ status: "failed", error_message: "本日の投稿上限に達しました" }).eq("id", postId);
     throw new Error(`Daily post limit reached (plan=${plan}, count=${dailyCount})`);
   }
 
   const content = draft.content;
   const snsTarget = draft.sns_target || "x";
   const imageUrl = draft.image_url || null;
+  const videoUrl = draft.video_url || null;
+  const mediaUrls = draft.media_urls || [];
+
+  // Instagram: Business プランのみ
+  if (snsTarget === "instagram" && plan !== "business") {
+    await supabase.schema('post').from("posts").update({ status: "failed", error_message: "Instagram投稿はBusinessプラン限定です" }).eq("id", postId);
+    throw new Error("Instagram投稿はBusinessプラン限定です");
+  }
 
   const draftSlotCfg = draft.slot_config as any;
   const isSplitSlot = draftSlotCfg?.split === true;
@@ -300,7 +315,9 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
     if (snsTarget === "x") {
       snsResults.x = await postToSnsViaCron(supabase, userId, "x", hookText, null, imageUrl);
     } else if (snsTarget === "threads") {
-      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl);
+      snsResults.threads = await postToSnsViaCron(supabase, userId, "threads", hookText, replyText, imageUrl, videoUrl);
+    } else if (snsTarget === "instagram") {
+      snsResults.instagram = await postToSnsViaCron(supabase, userId, "instagram", hookText, null, imageUrl, videoUrl, mediaUrls);
     }
     // SNS APIからエラーが返った場合もチェック
     const result = snsResults[snsTarget];
@@ -311,13 +328,13 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
   }
 
   if (snsSuccess) {
-    await supabase.from("posts").update({
+    await supabase.schema('post').from("posts").update({
       status: "posted",
       posted_at: new Date().toISOString(),
       sns_post_ids: snsResults,
     }).eq("id", postId);
 
-    await supabase.from("schedule_executions").insert({
+    await supabase.schema('post').from("schedule_executions").insert({
       user_id: userId,
       scheduled_time: (draft.slot_config as any)?.time || "00:00",
       status: "success",
@@ -337,14 +354,14 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
   } else {
     const errorMsg = snsResults[snsTarget]?.error || "SNS投稿に失敗しました";
     // SNS APIエラーの場合は下書きに戻す（手動で再投稿可能にする）
-    await supabase.from("posts").update({
+    await supabase.schema('post').from("posts").update({
       status: "draft",
       auto_post: false,
       error_message: errorMsg,
       sns_post_ids: snsResults,
     }).eq("id", postId);
 
-    await supabase.from("schedule_executions").insert({
+    await supabase.schema('post').from("schedule_executions").insert({
       user_id: userId,
       scheduled_time: (draft.slot_config as any)?.time || "00:00",
       status: "failed",
@@ -362,16 +379,21 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
 async function postToSnsViaCron(
   supabase: any,
   userId: string,
-  provider: "x" | "threads",
+  provider: "x" | "threads" | "instagram",
   hookText: string,
   replyText: string | null,
   imageUrl?: string | null,
+  videoUrl?: string | null,
+  mediaUrls?: any[],
 ) {
+  // Instagram は "instagram" プロバイダーからキーを取得
+  const keyProvider = provider;
   const { data: keys } = await supabase
     .from("api_keys")
     .select("*")
     .eq("user_id", userId)
-    .eq("provider", provider);
+    .eq("product", "post")
+    .eq("provider", keyProvider);
 
   if (!keys?.length) throw new Error(`No ${provider} API keys configured`);
 
@@ -389,12 +411,18 @@ async function postToSnsViaCron(
       accessTokenSecret: keyMap["access_token_secret"] || keyMap["accessTokenSecret"],
     };
     if (!credentials.consumerKey) throw new Error("Incomplete X keys — consumerKey missing");
-  } else {
+  } else if (provider === "threads") {
     credentials = {
       accessToken: keyMap["access_token"] || keyMap["accessToken"],
       userId: keyMap["user_id"] || keyMap["userId"],
     };
     if (!credentials.accessToken || !credentials.userId) throw new Error("Incomplete Threads keys — accessToken or userId missing");
+  } else if (provider === "instagram") {
+    credentials = {
+      accessToken: keyMap["access_token"] || keyMap["accessToken"],
+      igUserId: keyMap["ig_user_id"] || keyMap["igUserId"],
+    };
+    if (!credentials.accessToken || !credentials.igUserId) throw new Error("Incomplete Instagram keys — accessToken or igUserId missing");
   }
 
   const postRes = await fetch(
@@ -408,6 +436,8 @@ async function postToSnsViaCron(
         text: hookText,
         ...(replyText ? { splitReply: replyText } : {}),
         ...(imageUrl ? { imageUrl } : {}),
+        ...(videoUrl ? { videoUrl } : {}),
+        ...(mediaUrls && mediaUrls.length > 0 ? { mediaUrls } : {}),
       }),
     },
   );

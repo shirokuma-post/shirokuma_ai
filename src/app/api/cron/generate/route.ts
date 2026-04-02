@@ -34,7 +34,7 @@ async function handler(request: Request) {
 
     // 全有効スケジュールを取得
     const { data: configs, error: configError } = await supabase
-      .from("schedule_configs")
+      .schema('post').from("schedule_configs")
       .select("*")
       .eq("enabled", true);
 
@@ -47,16 +47,34 @@ async function handler(request: Request) {
 
     // 各ユーザーを処理
     for (const config of configs) {
-      const slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
+      let slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
       if (slots.length === 0) continue;
 
       const userId = config.user_id;
       const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
+      // Instagram サイクルチェック: 非投稿日はInstagramスロットを除外
+      const igCycle = config.ig_cycle as { enabled: boolean; intervalDays: number } | null;
+      if (igCycle?.enabled && igCycle.intervalDays > 1) {
+        const createdDate = new Date(config.created_at || config.updated_at || Date.now());
+        const now = new Date();
+        const daysSinceStart = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+        const isIgDay = daysSinceStart % igCycle.intervalDays === 0;
+        if (!isIgDay) {
+          const igCount = slots.filter(s => s.target === "instagram").length;
+          slots = slots.filter(s => s.target !== "instagram");
+          if (igCount > 0) {
+            console.log(`[BATCH-GENERATE] Instagram cycle: skipping for user ${userId} (day ${daysSinceStart}, interval ${igCycle.intervalDays})`);
+          }
+        }
+      }
+
+      if (slots.length === 0) continue;
+
       try {
         // 既存ドラフト削除
         await supabase
-          .from("posts")
+          .schema('post').from("posts")
           .delete()
           .eq("user_id", userId)
           .eq("status", "draft")
@@ -168,7 +186,7 @@ async function generateDraftsForUser(
         const scheduledAt = `${todayStr}T${slot.time}:00+09:00`;
         const parsed = parseGeneratedContent(contents[ci], isSplit);
 
-        const { data: post } = await supabase.from("posts").insert({
+        const { data: post } = await supabase.schema('post').from("posts").insert({
           user_id: userId,
           content: parsed.post,
           internal_title: parsed.title || null,

@@ -17,7 +17,7 @@ export async function GET() {
     .eq("id", user.id)
     .single();
 
-  const plan = (profile?.plan || "free") as PlanId;
+  const plan = (profile?.post_plan || "free") as PlanId;
   const today = new Date().toISOString().split("T")[0];
 
   // 日付が変わったらカウントリセット
@@ -30,7 +30,7 @@ export async function GET() {
   }
 
   const { data: philosophy } = await supabase
-    .from("philosophies")
+    .schema('post').from("philosophies")
     .select("id, title")
     .eq("user_id", user.id)
     .eq("is_active", true)
@@ -39,7 +39,8 @@ export async function GET() {
   const { data: apiKeys } = await supabase
     .from("api_keys")
     .select("provider, key_name")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("product", "post");
 
   const hasAiKey = apiKeys?.some(k => ["anthropic", "openai", "google"].includes(k.provider)) || false;
   const hasXKey = apiKeys?.some(k => k.provider === "x") || false;
@@ -51,14 +52,14 @@ export async function GET() {
     : snsProvider === "x" ? hasXKey : snsProvider === "threads" ? hasThreadsKey : false;
 
   const { data: recentPosts } = await supabase
-    .from("posts")
+    .schema('post').from("posts")
     .select("*")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(5);
 
   const { count: totalPosts } = await supabase
-    .from("posts")
+    .schema('post').from("posts")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id);
 

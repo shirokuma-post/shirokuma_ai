@@ -20,14 +20,14 @@ export async function POST(request: Request) {
 
     const { error } = await supabase
       .from("profiles")
-      .update({ plan })
+      .update({ post_plan: plan })
       .eq("id", user.id);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, plan });
+    return NextResponse.json({ success: true, post_plan: plan });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -14,7 +14,7 @@ export async function POST() {
 
     // 今日の未登録ドラフト（auto_post = false）を取得
     const { data: drafts, error } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .select("id, scheduled_at")
       .eq("user_id", user.id)
       .eq("status", "draft")
@@ -29,7 +29,7 @@ export async function POST() {
     // auto_post = true に一括更新
     const ids = drafts.map((d) => d.id);
     await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .update({ auto_post: true })
       .in("id", ids);
 

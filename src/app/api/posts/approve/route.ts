@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     // Get the pending post
     const { data: post, error: fetchError } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .select("*")
       .eq("id", postId)
       .eq("user_id", user.id)
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     if (action === "redo") {
       // Delete the pending post so user can regenerate
-      await supabase.from("posts").delete().eq("id", postId);
+      await supabase.schema('post').from("posts").delete().eq("id", postId);
       return NextResponse.json({ success: true, action: "deleted" });
     }
 
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
 
     // Update post status
     await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .update({
         status: "posted",
         posted_at: new Date().toISOString(),

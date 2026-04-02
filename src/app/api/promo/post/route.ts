@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     // プロフィール取得
     const { data: profile } = await supabase
       .from("profiles")
-      .select("plan, sns_provider, promo_type, promo_expires_at")
+      .select("post_plan, sns_provider, promo_type, promo_expires_at")
       .eq("id", user.id)
       .single();
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
-        plan: "business",
+        post_plan: "business",
         promo_type: "launch_post",
         promo_expires_at: expiresAt.toISOString(),
         promo_notified_7d: false,

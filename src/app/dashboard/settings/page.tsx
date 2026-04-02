@@ -53,7 +53,7 @@ export default function SettingsPage() {
   const [localAreaSaved, setLocalAreaSaved] = useState(false);
   const [testGenerating, setTestGenerating] = useState(false);
   const [testResult, setTestResult] = useState("");
-  const [testSns, setTestSns] = useState<"x" | "threads">("x");
+  const [testSns, setTestSns] = useState<"x" | "threads" | "instagram">("x");
   const [showCustomForm, setShowCustomForm] = useState<"style" | "character" | null>(null);
   const [customForm, setCustomForm] = useState({ name: "", desc: "", prompt: "" });
   const [saving, setSaving] = useState(false);
@@ -70,8 +70,46 @@ export default function SettingsPage() {
   const [structuredSummary, setStructuredSummary] = useState<any>(null);
   const [linkCode, setLinkCode] = useState<{ code: string; purpose: string } | null>(null);
   const [linkCodeLoading, setLinkCodeLoading] = useState(false);
+  const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
+  const [oauthMessage, setOauthMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // OAuth接続を開始
+  async function handleOAuthConnect(provider: "threads" | "instagram") {
+    setOauthConnecting(provider);
+    setOauthMessage(null);
+    try {
+      const res = await fetch(`/api/auth/meta?provider=${provider}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setOauthMessage({ type: "error", text: data.error || "OAuth URLの取得に失敗しました" });
+        setOauthConnecting(null);
+        return;
+      }
+      // Meta OAuth画面にリダイレクト
+      window.location.href = data.url;
+    } catch (e: any) {
+      setOauthMessage({ type: "error", text: e.message || "通信エラー" });
+      setOauthConnecting(null);
+    }
+  }
 
   useEffect(() => {
+    // OAuthコールバック後のメッセージ表示
+    const params = new URLSearchParams(window.location.search);
+    const oauthSuccess = params.get("oauth_success");
+    const oauthError = params.get("oauth_error");
+    if (oauthSuccess) {
+      setOauthMessage({ type: "success", text: `${oauthSuccess === "threads" ? "Threads" : "Instagram"} の接続に成功しました` });
+      setActiveTab("apikeys");
+      // URLからパラメータを除去
+      window.history.replaceState({}, "", "/dashboard/settings");
+    }
+    if (oauthError) {
+      setOauthMessage({ type: "error", text: `OAuth接続エラー: ${decodeURIComponent(oauthError)}` });
+      setActiveTab("apikeys");
+      window.history.replaceState({}, "", "/dashboard/settings");
+    }
+
     async function load() {
       try {
         const [phRes, keyRes, styleRes, schedRes] = await Promise.all([
@@ -487,42 +525,128 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* OAuth接続メッセージ */}
+          {oauthMessage && (
+            <div className={`p-3 rounded-lg text-sm ${oauthMessage.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+              {oauthMessage.text}
+              <button onClick={() => setOauthMessage(null)} className="ml-2 text-xs underline">閉じる</button>
+            </div>
+          )}
+
+          {/* Threads OAuth + 手動入力 */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-semibold text-gray-900">Threads (Meta) APIキー</h2>
-                  <p className="text-sm text-gray-500 mt-1">Meta Developer Portalで取得したThreads APIの認証情報を設定（Businessプラン限定）</p>
+                  <h2 className="font-semibold text-gray-900">Threads (Meta)</h2>
+                  <p className="text-sm text-gray-500 mt-1">OAuth接続（推奨）または手動でAPIキーを設定</p>
                 </div>
                 {isKeySaved("threads") && (
-                  <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 設定済み</span>
+                  <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 接続済み</span>
                 )}
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Access Token</label>
-                  <input type="password" value={threadsKeys.accessToken}
-                    onChange={(e) => setThreadsKeys(prev => ({ ...prev, accessToken: e.target.value }))}
-                    placeholder={isKeySaved("threads") ? "••••••••（設定済み）" : "Threads APIのアクセストークン"}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+              <div className="space-y-4">
+                {/* OAuth接続ボタン */}
+                <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-700 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="text-white">
+                      <p className="font-medium text-sm">Threads アカウント接続</p>
+                      <p className="text-xs text-gray-300 mt-0.5">ワンクリックでOAuth認証。トークンは自動更新されます。</p>
+                    </div>
+                    <Button
+                      onClick={() => handleOAuthConnect("threads")}
+                      disabled={oauthConnecting === "threads"}
+                      className="bg-white text-gray-900 hover:bg-gray-100 text-sm px-4 py-2"
+                    >
+                      {oauthConnecting === "threads" ? "接続中..." : isKeySaved("threads") ? "再接続" : "接続する"}
+                    </Button>
+                  </div>
                 </div>
+
+                {/* 手動入力（折りたたみ） */}
+                <details className="group">
+                  <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+                    手動でトークンを入力する場合はこちら
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Access Token</label>
+                      <input type="password" value={threadsKeys.accessToken}
+                        onChange={(e) => setThreadsKeys(prev => ({ ...prev, accessToken: e.target.value }))}
+                        placeholder={isKeySaved("threads") ? "••••••••（設定済み）" : "Threads APIのアクセストークン"}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+                      <input type="text" value={threadsKeys.userId}
+                        onChange={(e) => setThreadsKeys(prev => ({ ...prev, userId: e.target.value }))}
+                        placeholder={isKeySaved("threads") ? "••••••••（設定済み）" : "ThreadsのユーザーID（数字）"}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button onClick={handleSaveThreadsKeys} disabled={savingThreads || !threadsKeys.accessToken.trim() || !threadsKeys.userId.trim()}>
+                        {savingThreads ? "保存中..." : "保存する"}
+                      </Button>
+                      {savedThreads && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Instagram OAuth（Business限定） */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-                  <input type="text" value={threadsKeys.userId}
-                    onChange={(e) => setThreadsKeys(prev => ({ ...prev, userId: e.target.value }))}
-                    placeholder={isKeySaved("threads") ? "••••••••（設定済み）" : "ThreadsのユーザーID（数字）"}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-mono" />
+                  <h2 className="font-semibold text-gray-900">Instagram (Meta)</h2>
+                  <p className="text-sm text-gray-500 mt-1">Instagram Business アカウントをOAuth接続</p>
                 </div>
-                <p className="text-xs text-gray-400">Meta Developer Portal → Threads API → アクセストークンとユーザーIDを取得</p>
-                <div className="flex items-center gap-3">
-                  <Button onClick={handleSaveThreadsKeys} disabled={savingThreads || !threadsKeys.accessToken.trim() || !threadsKeys.userId.trim()}>
-                    {savingThreads ? "保存中..." : "保存する"}
-                  </Button>
-                  {savedThreads && <span className="text-sm text-green-600 flex items-center gap-1">{checkIcon} 保存しました</span>}
+                <div className="flex items-center gap-2">
+                  {isKeySaved("instagram") && (
+                    <span className="text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-full flex items-center gap-1">{checkIcon} 接続済み</span>
+                  )}
+                  {userPlan !== "business" && (
+                    <span className="text-xs px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full">Business限定</span>
+                  )}
                 </div>
               </div>
+            </CardHeader>
+            <CardContent>
+              {userPlan === "business" ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="text-white">
+                        <p className="font-medium text-sm">Instagram Business 接続</p>
+                        <p className="text-xs text-pink-100 mt-0.5">Facebookページ経由でInstagram Businessアカウントに接続</p>
+                      </div>
+                      <Button
+                        onClick={() => handleOAuthConnect("instagram")}
+                        disabled={oauthConnecting === "instagram"}
+                        className="bg-white text-gray-900 hover:bg-gray-100 text-sm px-4 py-2"
+                      >
+                        {oauthConnecting === "instagram" ? "接続中..." : isKeySaved("instagram") ? "再接続" : "接続する"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 space-y-1">
+                    <p>Instagram Business アカウントには以下が必要です:</p>
+                    <ul className="list-disc ml-4">
+                      <li>Instagram アカウントがビジネスまたはクリエイターに設定されていること</li>
+                      <li>Facebook ページと Instagram アカウントがリンクされていること</li>
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Instagram投稿にはBusinessプランへのアップグレードが必要です。
+                  写真・動画・カルーセル投稿に対応しています。
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -947,12 +1071,12 @@ export default function SettingsPage() {
             <CardContent>
               <div className="space-y-4">
                 <div className="flex gap-2">
-                  {(["x", "threads"] as const).map(sns => (
+                  {(["x", "threads", "instagram"] as const).map(sns => (
                     <button key={sns} onClick={() => setTestSns(sns)}
                       className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                         testSns === sns ? "border-brand-500 bg-brand-50 text-brand-700" : "border-gray-200 text-gray-600 hover:border-gray-300"
                       }`}>
-                      {sns === "x" ? "X" : "Threads"}
+                      {sns === "x" ? "X" : sns === "threads" ? "Threads" : "Instagram"}
                     </button>
                   ))}
                 </div>
@@ -961,7 +1085,7 @@ export default function SettingsPage() {
                 </Button>
                 {testResult && (
                   <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-xs text-gray-500 mb-2">プレビュー（{testSns === "x" ? "X" : "Threads"}向け）</p>
+                    <p className="text-xs text-gray-500 mb-2">プレビュー（{testSns === "x" ? "X" : testSns === "threads" ? "Threads" : "Instagram"}向け）</p>
                     <p className="text-sm text-gray-900 whitespace-pre-wrap">{testResult}</p>
                   </div>
                 )}

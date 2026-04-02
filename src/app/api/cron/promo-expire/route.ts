@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       .select("id, email, display_name")
       .not("promo_type", "is", null)
       .lt("promo_expires_at", now)
-      .eq("plan", "business")
+      .eq("post_plan", "business")
       // Stripe有料サブスクリプション中は除外
       .or("stripe_subscription_status.is.null,stripe_subscription_status.eq.none,stripe_subscription_status.eq.canceled");
 
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     for (const user of expiredUsers) {
       const { error: updateError } = await supabase
         .from("profiles")
-        .update({ plan: "free" })
+        .update({ post_plan: "free" })
         .eq("id", user.id);
 
       if (updateError) {
