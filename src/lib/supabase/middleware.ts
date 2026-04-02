@@ -51,24 +51,24 @@ export async function updateSession(request: NextRequest) {
   // オンボーディング未完了のユーザーをリダイレクト
   // dashboardにアクセスしようとしたとき、cookieでチェック
   if (user && pathname.startsWith("/dashboard")) {
-    const onboardingDone = request.cookies.get("onboarding_completed")?.value;
+    const onboardingDone = request.cookies.get("post_onboarding_completed")?.value;
     if (onboardingDone === undefined) {
       try {
         // cookieがない場合、DBを確認してcookieをセット
         const { data: profile } = await supabase
           .from("profiles")
-          .select("onboarding_completed")
+          .select("post_onboarding_completed")
           .eq("id", user.id)
           .single();
 
-        if (profile && profile.onboarding_completed === false) {
+        if (profile && profile.post_onboarding_completed === false) {
           const url = request.nextUrl.clone();
           url.pathname = "/onboarding";
           return NextResponse.redirect(url);
         }
         // オンボーディング完了済み or カラム未存在 → cookieセットして通過
-        if (profile?.onboarding_completed) {
-          supabaseResponse.cookies.set("onboarding_completed", "1", {
+        if (profile?.post_onboarding_completed) {
+          supabaseResponse.cookies.set("post_onboarding_completed", "1", {
             path: "/",
             maxAge: 60 * 60 * 24 * 365,
             httpOnly: true,

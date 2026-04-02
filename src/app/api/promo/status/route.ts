@@ -10,14 +10,14 @@ export async function GET() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("plan, promo_type, promo_expires_at")
+      .select("post_plan, promo_type, promo_expires_at")
       .eq("id", user.id)
       .single();
 
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
     return NextResponse.json({
-      plan: profile.plan,
+      plan: profile.post_plan,
       promoType: profile.promo_type,
       promoExpiresAt: profile.promo_expires_at,
     });

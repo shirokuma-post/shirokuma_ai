@@ -9,13 +9,13 @@ export async function GET() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("style_defaults, plan")
+    .select("style_defaults, post_plan")
     .eq("id", user.id)
     .single();
 
   return NextResponse.json({
     defaults: profile?.style_defaults || { style: "mix", character: "none", customStyles: [], customCharacters: [] },
-    plan: profile?.plan || "free",
+    plan: profile?.post_plan || "free",
   });
 }
 
@@ -31,12 +31,12 @@ export async function POST(request: Request) {
   // 既存の style_defaults を取得（マージ用）
   const { data: profile } = await supabase
     .from("profiles")
-    .select("plan, style_defaults")
+    .select("post_plan, style_defaults")
     .eq("id", user.id)
     .single();
 
-  const isPro = profile?.plan === "pro" || profile?.plan === "business";
-  const isBusiness = profile?.plan === "business";
+  const isPro = profile?.post_plan === "pro" || profile?.post_plan === "business";
+  const isBusiness = profile?.post_plan === "business";
   const existing = (profile?.style_defaults as any) || {};
 
   // 既存データとマージ（送られたフィールドのみ上書き）

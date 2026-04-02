@@ -1,7 +1,8 @@
 -- =====================================================
 -- SHIROKUMA Post - 統合スキーマ（現在の正）
 -- 新規環境構築時はこれ1つを実行すればOK
--- 最終更新: 2026-03-23
+-- 最終更新: 2026-04-01
+-- 既存環境への差分適用は migrations/ を参照
 -- =====================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -22,7 +23,7 @@ CREATE TABLE public.profiles (
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
   stripe_subscription_status TEXT DEFAULT 'none',
-  sns_provider TEXT CHECK (sns_provider IN ('x', 'threads')),
+  sns_provider TEXT CHECK (sns_provider IN ('x', 'threads', 'instagram')),
   onboarding_completed BOOLEAN NOT NULL DEFAULT false,
   style_defaults JSONB DEFAULT '{}'::jsonb,
   promo_type TEXT,
@@ -33,6 +34,9 @@ CREATE TABLE public.profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX idx_profiles_stripe ON public.profiles(stripe_customer_id)
+  WHERE stripe_customer_id IS NOT NULL;
+
 -- =====================================================
 -- 2. API Keys（BYOK - 暗号化保存）
 -- =====================================================
@@ -40,7 +44,7 @@ CREATE TABLE public.api_keys (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   provider TEXT NOT NULL
-    CHECK (provider IN ('anthropic', 'openai', 'google', 'x', 'threads')),
+    CHECK (provider IN ('anthropic', 'openai', 'google', 'x', 'threads', 'instagram')),
   key_name TEXT NOT NULL,
   encrypted_value TEXT NOT NULL,
   metadata JSONB,
@@ -55,8 +59,6 @@ CREATE UNIQUE INDEX idx_api_keys_unique ON public.api_keys(user_id, provider, ke
 
 -- =====================================================
 -- 3. Philosophies（思想・理論テキスト + 構造化サマリー）
---    summary: JSON文字列（StructuredSummary）or プレーンテキスト
---    core_concepts: レガシー（構造化サマリー移行前の概念リスト）
 -- =====================================================
 CREATE TABLE public.philosophies (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -81,20 +83,22 @@ CREATE TABLE public.posts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
-  style_used TEXT,                -- nullable: 手動投稿では未設定の場合あり
+  style_used TEXT,
   status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft', 'scheduled', 'posted', 'failed', 'pending_approval', 'posting', 'sending')),
   scheduled_at TIMESTAMPTZ,
   posted_at TIMESTAMPTZ,
-  sns_post_ids JSONB,             -- { "x": {...}, "threads": {...} }
+  sns_post_ids JSONB,
   error_message TEXT,
-  ai_model_used TEXT,             -- "anthropic" | "openai" | "google"
-  sns_target TEXT DEFAULT 'x',    -- "x" | "threads"
+  ai_model_used TEXT,
+  sns_target TEXT DEFAULT 'x',
   auto_post BOOLEAN NOT NULL DEFAULT true,
-  slot_index INTEGER,             -- スロット番号（0-indexed）
-  slot_config JSONB,              -- 生成時のスロット設定を保持
-  image_url TEXT,                 -- 画像付き投稿用（Supabase Storage公開URL）
-  internal_title TEXT,            -- AI生成タイトル（内部管理用）
+  slot_index INTEGER,
+  slot_config JSONB,
+  image_url TEXT,
+  video_url TEXT,
+  media_urls JSONB DEFAULT '[]'::jsonb,
+  internal_title TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -107,7 +111,7 @@ CREATE INDEX idx_posts_draft_scheduled
 -- =====================================================
 -- 5. Schedule Configs（スロットベース自動投稿設定）
 --    slots: JSONB配列
---    [{ time, target, style, character, length, split }]
+--    [{ time, target, style, character, length, split, useTrend?, theme? }]
 -- =====================================================
 CREATE TABLE public.schedule_configs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -116,6 +120,8 @@ CREATE TABLE public.schedule_configs (
   require_approval BOOLEAN NOT NULL DEFAULT false,
   trend_enabled BOOLEAN NOT NULL DEFAULT false,
   trend_categories JSONB NOT NULL DEFAULT '["general", "technology", "business"]'::jsonb,
+  local_area TEXT,
+  ig_cycle JSONB,
   slots JSONB NOT NULL DEFAULT '[]'::jsonb,
   timezone TEXT NOT NULL DEFAULT 'Asia/Tokyo',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -155,6 +161,8 @@ CREATE TABLE public.learning_posts (
   platform TEXT DEFAULT 'x',
   metrics JSONB DEFAULT '{}',
   ai_analysis JSONB,
+  source_type TEXT DEFAULT 'own' CHECK (source_type IN ('own', 'others')),
+  source_account TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -170,12 +178,15 @@ CREATE TABLE public.daily_trends (
   title TEXT NOT NULL,
   summary TEXT,
   source_url TEXT,
+  user_id UUID DEFAULT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_daily_trends_fetched
   ON public.daily_trends(fetched_at DESC);
+CREATE INDEX idx_daily_trends_user_local
+  ON public.daily_trends(user_id, category) WHERE category = 'local';
 
 -- =====================================================
 -- 9. GPTs連携コード
@@ -194,7 +205,16 @@ CREATE INDEX idx_gpts_link_codes_code ON public.gpts_link_codes(code) WHERE used
 CREATE INDEX idx_gpts_link_codes_user ON public.gpts_link_codes(user_id);
 
 -- =====================================================
--- 10. RLS Policies
+-- 10. Stripe Webhook Events（冪等性保証）
+-- =====================================================
+CREATE TABLE public.stripe_webhook_events (
+  event_id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =====================================================
+-- 11. RLS Policies
 -- =====================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
@@ -238,8 +258,10 @@ CREATE POLICY "Service can update link codes"
   ON public.gpts_link_codes FOR UPDATE USING (true);
 
 -- =====================================================
--- 9. Triggers
+-- 12. Functions
 -- =====================================================
+
+-- updated_at 自動更新トリガー関数
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -248,6 +270,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 日次投稿カウントのアトミック増加
+CREATE OR REPLACE FUNCTION increment_daily_post_count(p_user_id UUID, p_plan_limit INT)
+RETURNS void AS $$
+BEGIN
+  UPDATE profiles
+  SET daily_post_count = daily_post_count + 1
+  WHERE id = p_user_id
+    AND (p_plan_limit = -1 OR daily_post_count < p_plan_limit);
+END;
+$$ LANGUAGE plpgsql;
+
+-- 日次カウントリセット（日付変更時）
+CREATE OR REPLACE FUNCTION reset_daily_count_if_needed(p_user_id UUID)
+RETURNS void AS $$
+DECLARE
+  v_today DATE;
+BEGIN
+  v_today := (NOW() AT TIME ZONE 'Asia/Tokyo')::DATE;
+  UPDATE profiles
+  SET daily_post_count = 0, daily_reset_at = v_today
+  WHERE id = p_user_id AND daily_reset_at < v_today;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =====================================================
+-- 13. Triggers
+-- =====================================================
 CREATE TRIGGER tr_profiles_updated
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -260,9 +309,12 @@ CREATE TRIGGER tr_philosophies_updated
 CREATE TRIGGER tr_schedule_configs_updated
   BEFORE UPDATE ON public.schedule_configs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER tr_posts_updated
+  BEFORE UPDATE ON public.posts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- =====================================================
--- 10. Auto-create profile on signup
+-- 14. Auto-create profile on signup
 -- =====================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$

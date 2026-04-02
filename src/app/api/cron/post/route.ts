@@ -25,7 +25,7 @@ async function handler(request: Request) {
     // 0. "posting"/"sending" のまま予定時刻から1時間以上経過した投稿を "draft" に戻す（自動復旧）
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     const { data: stuckPosts } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .update({ status: "draft", error_message: "posting/sending状態タイムアウト — 自動復旧" })
       .in("status", ["posting", "sending"])
       .lt("scheduled_at", oneHourAgo)
@@ -37,7 +37,7 @@ async function handler(request: Request) {
 
     // 1. Get today's drafts that are due (auto_post = true)
     const { data: drafts, error: draftError } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .select("*")
       .eq("status", "draft")
       .eq("auto_post", true)
@@ -68,7 +68,7 @@ async function handler(request: Request) {
     // 3. Mark drafts as "posting" to prevent duplicate dispatch
     const draftIds = dueDrafts.map((d: any) => d.id);
     await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .update({ status: "posting" })
       .in("id", draftIds);
 

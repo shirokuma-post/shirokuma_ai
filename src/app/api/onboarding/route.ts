@@ -14,23 +14,38 @@ export async function POST(request: Request) {
   const body = await request.json();
   const snsProvider = body.snsProvider as SnsProvider;
 
-  if (!snsProvider || !["x", "threads"].includes(snsProvider)) {
+  if (!snsProvider || !["x", "threads", "instagram"].includes(snsProvider)) {
     return NextResponse.json(
-      { error: "SNSを選択してください（x または threads）" },
+      { error: "SNSを選択してください（x, threads, または instagram）" },
       { status: 400 }
     );
+  }
+
+  // Instagram はBusinessプラン限定
+  if (snsProvider === "instagram") {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("post_plan")
+      .eq("id", user.id)
+      .single();
+    if (profile?.post_plan !== "business") {
+      return NextResponse.json(
+        { error: "InstagramはBusinessプラン限定です。" },
+        { status: 403 }
+      );
+    }
   }
 
   // 既にオンボーディング済みかチェック
   const { data: profile } = await supabase
     .from("profiles")
-    .select("onboarding_completed, plan")
+    .select("post_onboarding_completed, post_plan")
     .eq("id", user.id)
     .single();
 
-  if (profile?.onboarding_completed) {
+  if (profile?.post_onboarding_completed) {
     // Business は変更可能
-    if (profile.plan === "business") {
+    if (profile.post_plan === "business") {
       await supabase
         .from("profiles")
         .update({ sns_provider: snsProvider })
@@ -50,7 +65,7 @@ export async function POST(request: Request) {
     .from("profiles")
     .update({
       sns_provider: snsProvider,
-      onboarding_completed: true,
+      post_onboarding_completed: true,
       style_defaults: {
         style: "mix",
         character: "none",

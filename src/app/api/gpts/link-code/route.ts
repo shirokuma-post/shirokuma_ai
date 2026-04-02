@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     // 既存の未使用コードを無効化
     await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .delete()
       .eq("user_id", user.id)
       .eq("purpose", purpose)
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     const { data, error } = await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .insert({
         user_id: user.id,
         code,
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
 
     // 最新のコードを取得
     const { data } = await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .select("code, purpose, used, expires_at")
       .eq("user_id", user.id)
       .eq("purpose", purpose)

@@ -30,17 +30,30 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (body.content !== undefined) updates.content = body.content;
     if (body.auto_post !== undefined) updates.auto_post = body.auto_post;
+    // 画像URL
     if (body.image_url !== undefined) {
       if (body.image_url !== null && !isUrlSafe(body.image_url)) {
         return NextResponse.json({ error: "無効な画像URLです" }, { status: 400 });
       }
       updates.image_url = body.image_url;
     }
+    // 動画URL
     if (body.video_url !== undefined) {
       if (body.video_url !== null && !isUrlSafe(body.video_url)) {
         return NextResponse.json({ error: "無効な動画URLです" }, { status: 400 });
       }
       updates.video_url = body.video_url;
+    }
+    // カルーセル用メディアURLs
+    if (body.media_urls !== undefined) {
+      if (body.media_urls !== null && Array.isArray(body.media_urls)) {
+        for (const m of body.media_urls) {
+          if (m.url && !isUrlSafe(m.url)) {
+            return NextResponse.json({ error: "無効なメディアURLが含まれています" }, { status: 400 });
+          }
+        }
+      }
+      updates.media_urls = body.media_urls || [];
     }
 
     if (Object.keys(updates).length === 0) {
@@ -48,7 +61,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const { data, error } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .update(updates)
       .eq("id", id)
       .eq("user_id", user.id)
@@ -73,7 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // Get existing draft
     const { data: draft, error: fetchErr } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .select("*")
       .eq("id", id)
       .eq("user_id", user.id)
@@ -91,7 +104,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // Get philosophy
     const { data: philosophy } = await supabase
-      .from("philosophies")
+      .schema('post').from("philosophies")
       .select("*")
       .eq("user_id", user.id)
       .eq("is_active", true)
@@ -104,6 +117,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .from("api_keys")
       .select("*")
       .eq("user_id", user.id)
+      .eq("product", "post")
       .in("provider", ["anthropic", "openai", "google"]);
 
     const aiKey = aiKeys?.[0];
@@ -123,14 +137,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // Learning context
     let learningContext = "";
     try {
-      const { data: lp } = await supabase.from("learning_posts").select("*").eq("user_id", user.id);
+      const { data: lp } = await supabase.schema('post').from("learning_posts").select("*").eq("user_id", user.id);
       if (lp?.length) learningContext = buildLearningContext(lp);
     } catch {}
 
     // Recent posts for anti-repetition
     let recentPostContents: string[] = [];
     try {
-      const { data: rp } = await supabase.from("posts").select("content").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
+      const { data: rp } = await supabase.schema('post').from("posts").select("content").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
       if (rp?.length) recentPostContents = rp.map((p: any) => p.content);
     } catch {}
 
@@ -179,7 +193,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     // Update draft
     const { data: updated, error: updateErr } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .update({ content: savedContent, ai_model_used: provider })
       .eq("id", id)
       .select()

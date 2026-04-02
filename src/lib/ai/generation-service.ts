@@ -59,7 +59,7 @@ export async function fetchUserGenerationContext(
 ): Promise<UserGenerationContext> {
   // 1. マイコンセプト
   const { data: philosophy } = await supabase
-    .from("philosophies")
+    .schema('post').from("philosophies")
     .select("*")
     .eq("user_id", userId)
     .eq("is_active", true)
@@ -70,6 +70,7 @@ export async function fetchUserGenerationContext(
   const { data: aiKeys } = await supabase
     .from("api_keys")
     .select("*")
+    .eq("product", "post")
     .eq("user_id", userId)
     .in("provider", ["anthropic", "openai", "google"]);
   const aiKey = aiKeys?.[0];
@@ -83,13 +84,13 @@ export async function fetchUserGenerationContext(
   try {
     const { data: userProfile } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("post_plan")
       .eq("id", userId)
       .single();
-    const userPlan = userProfile?.plan || "free";
+    const userPlan = userProfile?.post_plan || "free";
 
     const { data: lp } = await supabase
-      .from("learning_posts")
+      .schema('post').from("learning_posts")
       .select("content, platform, ai_analysis, source_type, source_account")
       .eq("user_id", userId);
 
@@ -112,7 +113,7 @@ export async function fetchUserGenerationContext(
   let recentPostTitles: string[] = [];
   try {
     const { data: rp } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .select("content, internal_title")
       .eq("user_id", userId)
       .eq("status", "posted")
@@ -172,7 +173,7 @@ export async function fetchTrendContext(
     // グローバルトレンド
     const cats = categories.length > 0 ? categories : ["general", "technology", "business"];
     const { data: trends } = await supabase
-      .from("daily_trends")
+      .schema('post').from("daily_trends")
       .select("title, summary, category")
       .in("category", cats)
       .is("user_id", null)
@@ -193,7 +194,7 @@ export async function fetchTrendContext(
   if (userId) {
     try {
       const { data: localTrends } = await supabase
-        .from("daily_trends")
+        .schema('post').from("daily_trends")
         .select("title, summary")
         .eq("category", "local")
         .eq("user_id", userId)

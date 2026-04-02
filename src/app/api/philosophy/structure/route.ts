@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       .from("api_keys")
       .select("*")
       .eq("user_id", authUser.id)
+      .eq("product", "post")
       .in("provider", ["anthropic", "openai", "google"]);
 
     const aiKey = aiKeys?.[0];
@@ -95,7 +96,7 @@ export async function POST(request: Request) {
 
     // DBのsummaryに保存
     const { error: updateError } = await supabase
-      .from("philosophies")
+      .schema('post').from("philosophies")
       .update({ summary: JSON.stringify(structured) })
       .eq("user_id", authUser.id)
       .eq("is_active", true);

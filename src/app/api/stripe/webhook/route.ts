@@ -65,13 +65,13 @@ export async function POST(request: Request) {
           await supabaseAdmin
             .from("profiles")
             .update({
-              plan,
+              post_plan: plan,
               stripe_subscription_id: subscription.id,
               stripe_subscription_status: status,
             })
             .eq("stripe_customer_id", customerId);
 
-          console.log(`Plan updated: customer=${customerId}, plan=${plan}, status=${status}`);
+          console.log(`Plan updated: customer=${customerId}, post_plan=${plan}, status=${status}`);
         }
         break;
       }
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         await supabaseAdmin
           .from("profiles")
           .update({
-            plan: "free",
+            post_plan: "free",
             stripe_subscription_id: null,
             stripe_subscription_status: "canceled",
           })

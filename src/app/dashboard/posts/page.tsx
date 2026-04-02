@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { VoiceProfile } from "@/lib/ai/generate-post";
 import TagInput from "@/components/TagInput";
 
-type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; image_url: string | null; video_url: string | null; created_at: string };
+type Post = { id: string; content: string; style_used: string; status: string; posted_at: string | null; ai_model_used: string | null; sns_post_ids: any; sns_target: string | null; auto_post: boolean; slot_index: number | null; slot_config: any; scheduled_at: string | null; image_url: string | null; video_url: string | null; media_urls: { url: string; type: string }[] | null; created_at: string };
 type PostLength = "short" | "standard" | "long";
 type UserPlan = "free" | "pro" | "business";
 type SnsTarget = "x" | "threads" | "instagram";
@@ -93,13 +93,12 @@ export default function PostsPage() {
   const [needsRegistration, setNeedsRegistration] = useState(false);
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
 
-  // --- 画像/動画アップロード ---
-  const [draftImageUrls, setDraftImageUrls] = useState<Record<string, string>>({});
-  const [draftVideoUrls, setDraftVideoUrls] = useState<Record<string, string>>({});
-  const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+  // カルーセル画像（ドラフト用: draftId → urls）
+  const [draftMediaUrls, setDraftMediaUrls] = useState<Record<string, { url: string; type: string }[]>>({});
+  const [uploadingMedia, setUploadingMedia] = useState<string | null>(null);
+  // プレビュー用メディア
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
-  const [uploadingPreviewImage, setUploadingPreviewImage] = useState(false);
+  const [previewMediaUrls, setPreviewMediaUrls] = useState<{ url: string; type: string }[]>([]);
   const [imageModal, setImageModal] = useState<string | null>(null);
   const [generatingCaption, setGeneratingCaption] = useState<string | null>(null);
 
@@ -279,7 +278,8 @@ export default function PostsPage() {
   const VIDEO_TYPES = ["video/mp4", "video/quicktime", "video/webm"];
   const ALL_MEDIA_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES];
 
-  async function handleMediaUpload(file: File): Promise<{ url: string; mediaType: "image" | "video" } | null> {
+  // --- メディアアップロード ---
+  async function handleMediaUpload(file: File): Promise<{ url: string; mediaType: string } | null> {
     const isVideo = VIDEO_TYPES.includes(file.type);
     const maxSize = isVideo ? 100 * 1024 * 1024 : 5 * 1024 * 1024;
     if (file.size > maxSize) { setPostResult(`エラー: ${isVideo ? "動画は100MB" : "画像は5MB"}以下にしてください`); return null; }
@@ -294,42 +294,40 @@ export default function PostsPage() {
     } catch { setPostResult("エラー: アップロードに失敗しました"); return null; }
   }
 
-  async function handleDraftMediaUpload(draftId: string, file: File) {
-    setUploadingImage(draftId);
-    const result = await handleMediaUpload(file);
-    if (result) {
-      if (result.mediaType === "video") {
-        setDraftVideoUrls((prev) => ({ ...prev, [draftId]: result.url }));
-        setDraftImageUrls((prev) => { const n = { ...prev }; delete n[draftId]; return n; });
-        await fetch(`/api/posts/${draftId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ video_url: result.url, image_url: null }),
-        });
-        setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, video_url: result.url, image_url: null } : d));
-      } else {
-        setDraftImageUrls((prev) => ({ ...prev, [draftId]: result.url }));
-        setDraftVideoUrls((prev) => { const n = { ...prev }; delete n[draftId]; return n; });
-        await fetch(`/api/posts/${draftId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_url: result.url, video_url: null }),
-        });
-        setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, image_url: result.url, video_url: null } : d));
-      }
+  async function handleDraftMediaUpload(draftId: string, files: FileList) {
+    setUploadingMedia(draftId);
+    const existing = draftMediaUrls[draftId] || [];
+    const newItems: { url: string; type: string }[] = [...existing];
+    for (const file of Array.from(files)) {
+      const result = await handleMediaUpload(file);
+      if (result) newItems.push({ url: result.url, type: result.mediaType });
     }
-    setUploadingImage(null);
-  }
-
-  async function handleDraftMediaRemove(draftId: string) {
-    setDraftImageUrls((prev) => { const n = { ...prev }; delete n[draftId]; return n; });
-    setDraftVideoUrls((prev) => { const n = { ...prev }; delete n[draftId]; return n; });
+    setDraftMediaUrls(prev => ({ ...prev, [draftId]: newItems }));
+    // DBにも保存
     await fetch(`/api/posts/${draftId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_url: null, video_url: null }),
+      body: JSON.stringify({
+        media_urls: newItems,
+        image_url: newItems.length > 0 ? newItems[0].url : null,
+      }),
     });
-    setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, image_url: null, video_url: null } : d));
+    setUploadingMedia(null);
+  }
+
+  function handleDraftMediaRemove(draftId: string, index: number) {
+    const existing = draftMediaUrls[draftId] || [];
+    const updated = existing.filter((_, i) => i !== index);
+    setDraftMediaUrls(prev => ({ ...prev, [draftId]: updated }));
+    // DBにも保存
+    fetch(`/api/posts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        media_urls: updated,
+        image_url: updated.length > 0 ? updated[0].url : null,
+      }),
+    });
   }
 
   async function handleGenerateCaption(imageUrl: string, target: "draft" | "preview", draftId?: string) {
@@ -344,7 +342,6 @@ export default function PostsPage() {
       const data = await res.json();
       if (res.ok && data.caption) {
         if (target === "draft" && draftId) {
-          // ドラフトの内容をキャプションで置換
           await fetch(`/api/posts/${draftId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -352,7 +349,6 @@ export default function PostsPage() {
           });
           setTodayDrafts((prev) => prev.map((d) => d.id === draftId ? { ...d, content: data.caption } : d));
         } else {
-          // プレビューのテキストをキャプションに設定
           setEditText(data.caption);
           if (!preview) { setPreview(data.caption); setPreviewTarget(snsTab); }
         }
@@ -363,19 +359,16 @@ export default function PostsPage() {
     setGeneratingCaption(null);
   }
 
-  async function handlePreviewMediaUpload(file: File) {
-    setUploadingPreviewImage(true);
-    const result = await handleMediaUpload(file);
-    if (result) {
-      if (result.mediaType === "video") {
-        setPreviewVideoUrl(result.url);
-        setPreviewImageUrl(null);
-      } else {
-        setPreviewImageUrl(result.url);
-        setPreviewVideoUrl(null);
-      }
+  async function handlePreviewMediaUpload(files: FileList) {
+    const newItems: { url: string; type: string }[] = [...previewMediaUrls];
+    for (const file of Array.from(files)) {
+      const result = await handleMediaUpload(file);
+      if (result) newItems.push({ url: result.url, type: result.mediaType });
     }
-    setUploadingPreviewImage(false);
+    setPreviewMediaUrls(newItems);
+    if (newItems.length > 0 && !previewImageUrl) {
+      setPreviewImageUrl(newItems[0].url);
+    }
   }
 
   async function handleManualPost(draft: Post) {
@@ -391,10 +384,16 @@ export default function PostsPage() {
 
       const payload: any = { provider: draft.sns_target || "x", text: hookText };
       if (replyText) payload.splitReply = replyText;
-      const imgUrl = draftImageUrls[draft.id] || draft.image_url;
-      if (imgUrl) payload.imageUrl = imgUrl;
-      const vidUrl = draftVideoUrls[draft.id] || draft.video_url;
-      if (vidUrl) payload.videoUrl = vidUrl;
+      // メディア添付
+      const draftMedia = draftMediaUrls[draft.id] || draft.media_urls || [];
+      if (draftMedia.length > 1) {
+        payload.mediaUrls = draftMedia;
+      } else if (draftMedia.length === 1) {
+        payload.imageUrl = draftMedia[0].url;
+      } else if (draft.image_url) {
+        payload.imageUrl = draft.image_url;
+      }
+      if (draft.video_url) payload.videoUrl = draft.video_url;
 
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
@@ -450,13 +449,18 @@ export default function PostsPage() {
     try {
       const payload: any = { provider, text: editText };
       if (splitReply && editReply) payload.splitReply = editReply;
-      if (previewImageUrl) payload.imageUrl = previewImageUrl;
-      if (previewVideoUrl) payload.videoUrl = previewVideoUrl;
+      if (previewMediaUrls.length > 1) {
+        payload.mediaUrls = previewMediaUrls;
+      } else if (previewMediaUrls.length === 1) {
+        payload.imageUrl = previewMediaUrls[0].url;
+      } else if (previewImageUrl) {
+        payload.imageUrl = previewImageUrl;
+      }
       const res = await fetch("/api/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (res.ok) {
         const label = provider === "x" ? "X" : provider === "threads" ? "Threads" : "Instagram";
-        setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewImageUrl(null); setPreviewVideoUrl(null); fetchPosts(1);
+        setPostResult(label + " に投稿しました！"); setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewMediaUrls([]); setPreviewImageUrl(null); fetchPosts(1);
       } else { setPostResult("エラー: " + (data.error || data.message || "投稿に失敗")); }
     } catch (e) { setPostResult("エラー: 通信に失敗しました"); } finally { setPosting(null); }
   }
@@ -645,48 +649,43 @@ export default function PostsPage() {
                         return <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{cleanContent}</p>;
                       })()}
 
-                      {/* Media upload/preview (image or video) */}
-                      {(() => {
-                        const imgUrl = draftImageUrls[draft.id] || draft.image_url;
-                        const vidUrl = draftVideoUrls[draft.id] || draft.video_url;
-                        const hasMedia = imgUrl || vidUrl;
+                      {/* メディア添付 */}
+                      {!isEditing && (() => {
+                        const media = draftMediaUrls[draft.id] || draft.media_urls || [];
+                        const isInstagram = draft.sns_target === "instagram";
+                        const isXTarget = draft.sns_target === "x";
                         return (
-                          <div className="flex items-center gap-2 mt-2">
-                            {vidUrl && (
-                              <>
-                                <div className="relative group">
-                                  <video src={vidUrl} className="w-20 h-16 object-cover rounded border border-gray-200" muted />
-                                  <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/70 text-white px-1 rounded">VIDEO</span>
-                                  <button onClick={() => handleDraftMediaRemove(draft.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                                </div>
-                              </>
+                          <div className="mt-2">
+                            {media.length > 0 && (
+                              <div className="flex gap-2 flex-wrap mb-2">
+                                {media.map((m, idx) => (
+                                  <div key={idx} className="relative group">
+                                    {m.type === "video" ? (
+                                      <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">VIDEO</div>
+                                    ) : (
+                                      <img src={m.url} alt="" className="w-16 h-16 object-cover rounded border border-gray-200" />
+                                    )}
+                                    <button
+                                      onClick={() => handleDraftMediaRemove(draft.id, idx)}
+                                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >×</button>
+                                  </div>
+                                ))}
+                              </div>
                             )}
-                            {imgUrl && !vidUrl && (
-                              <>
-                                <div className="relative group">
-                                  <img src={imgUrl} alt="添付画像" className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer" onClick={() => setImageModal(imgUrl)} />
-                                  <button onClick={() => handleDraftMediaRemove(draft.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                                </div>
-                                <button
-                                  onClick={() => handleGenerateCaption(imgUrl, "draft", draft.id)}
-                                  disabled={generatingCaption === draft.id}
-                                  className="text-xs text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50 transition-colors"
-                                >
-                                  {generatingCaption === draft.id ? "AI生成中..." : "AIキャプション"}
-                                </button>
-                              </>
+                            <label className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 cursor-pointer">
+                              <input
+                                type="file"
+                                accept={isXTarget ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"}
+                                multiple={isInstagram}
+                                className="hidden"
+                                onChange={(e) => e.target.files && handleDraftMediaUpload(draft.id, e.target.files)}
+                              />
+                              {uploadingMedia === draft.id ? "⏳ アップロード中..." : isInstagram ? `📸 画像追加${media.length > 0 ? `(${media.length})` : ""}（複数可）` : isXTarget ? "📷 画像" : "📷 画像/動画"}
+                            </label>
+                            {isInstagram && media.length === 0 && (
+                              <span className="ml-2 text-xs text-amber-600">※ 画像必須</span>
                             )}
-                            {!hasMedia && (() => {
-                              const isXDraft = draft.sns_target === "x";
-                              const acceptTypes = isXDraft ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm";
-                              return (
-                                <label className={"flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 transition-colors cursor-pointer " + (uploadingImage === draft.id ? "opacity-50 pointer-events-none" : "")}>
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
-                                  {uploadingImage === draft.id ? "アップロード中..." : isXDraft ? "画像" : "画像/動画"}
-                                  <input type="file" accept={acceptTypes} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDraftMediaUpload(draft.id, f); }} />
-                                </label>
-                              );
-                            })()}
                           </div>
                         );
                       })()}
@@ -974,16 +973,16 @@ export default function PostsPage() {
                   })}
                 </div>
               </div>
-              {!isX && (
+              {snsTab === "threads" && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
                   <button onClick={() => { if (!canUseSplit) { window.location.href = "/pricing"; return; } setThSplitMode(!thSplitMode); }} className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " + (thSplitMode ? "border-purple-500 bg-purple-50 text-purple-700" : !canUseSplit ? "border-gray-100 bg-gray-50 text-gray-400 cursor-pointer hover:border-amber-300 hover:bg-amber-50" : "border-gray-200 text-gray-600 hover:border-gray-300")}>{thSplitMode ? "✓ " : ""}フック → リプ{!canUseSplit && " 🔒"}</button>
                 </div>
               )}
-              {isX && (
+              {(isX || snsTab === "instagram") && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-2">分割投稿</label>
-                  <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">X API制限により不可</span>
+                  <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">{isX ? "X" : "Instagram"} API制限により不可</span>
                 </div>
               )}
             </div>
@@ -1026,45 +1025,44 @@ export default function PostsPage() {
                 <p className="text-xs text-gray-400 mt-1">{editReply.length} 文字</p>
               </div>
             )}
-            {/* Media upload for preview (image or video) */}
-            <div className="flex items-center gap-2 mb-4 flex-wrap">
-              {previewVideoUrl ? (
-                <div className="flex items-center gap-2">
-                  <div className="relative group">
-                    <video src={previewVideoUrl} className="w-20 h-16 object-cover rounded border border-gray-200" muted />
-                    <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/70 text-white px-1 rounded">VIDEO</span>
-                    <button onClick={() => setPreviewVideoUrl(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                  </div>
+            {/* メディア添付 */}
+            <div className="mb-4">
+              {previewMediaUrls.length > 0 && (
+                <div className="flex gap-2 flex-wrap mb-2">
+                  {previewMediaUrls.map((m, idx) => (
+                    <div key={idx} className="relative group">
+                      {m.type === "video" ? (
+                        <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">VIDEO</div>
+                      ) : (
+                        <img src={m.url} alt="" className="w-16 h-16 object-cover rounded border border-gray-200" />
+                      )}
+                      <button
+                        onClick={() => setPreviewMediaUrls(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >×</button>
+                    </div>
+                  ))}
                 </div>
-              ) : previewImageUrl ? (
-                <div className="flex items-center gap-2">
-                  <div className="relative group">
-                    <img src={previewImageUrl} alt="添付画像" className="w-16 h-16 object-cover rounded border border-gray-200 cursor-pointer" onClick={() => setImageModal(previewImageUrl)} />
-                    <button onClick={() => setPreviewImageUrl(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                  </div>
-                  <button
-                    onClick={() => handleGenerateCaption(previewImageUrl, "preview")}
-                    disabled={generatingCaption === "preview"}
-                    className="text-xs text-purple-600 hover:text-purple-700 px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
-                  >
-                    {generatingCaption === "preview" ? "AI生成中..." : "AIでキャプション生成"}
-                  </button>
-                </div>
-              ) : (
-                <label className={"flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg border border-dashed border-gray-300 hover:border-gray-400 transition-colors cursor-pointer " + (uploadingPreviewImage ? "opacity-50 pointer-events-none" : "")}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21z" /></svg>
-                  {uploadingPreviewImage ? "アップロード中..." : previewTarget === "x" ? "画像を追加" : "画像/動画を追加"}
-                  <input type="file" accept={previewTarget === "x" ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePreviewMediaUpload(f); }} />
-                </label>
               )}
-              {snsTab === "x" && (previewVideoUrl) && (
-                <span className="text-xs text-amber-600">X は動画非対応です（画像のみ）</span>
+              <label className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 cursor-pointer">
+                <input
+                  type="file"
+                  accept={previewTarget === "x" ? "image/jpeg,image/png,image/gif,image/webp" : "image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/webm"}
+                  multiple={previewTarget === "instagram"}
+                  className="hidden"
+                  onChange={(e) => e.target.files && handlePreviewMediaUpload(e.target.files)}
+                />
+                {previewTarget === "instagram" ? `📸 画像追加${previewMediaUrls.length > 0 ? `(${previewMediaUrls.length})` : ""}（複数可）` : previewTarget === "x" ? "📷 画像を追加" : "📷 画像/動画を追加"}
+              </label>
+              {previewTarget === "instagram" && previewMediaUrls.length === 0 && (
+                <span className="ml-2 text-xs text-amber-600">※ Instagram投稿には画像が必須です</span>
               )}
             </div>
+
             <div className="flex gap-2">
-              <Button size="sm" onClick={handlePost} disabled={!!posting}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : previewTarget === "threads" ? "Threads に投稿" : "Instagram に投稿"}</Button>
+              <Button size="sm" onClick={handlePost} disabled={!!posting || (previewTarget === "instagram" && previewMediaUrls.length === 0)}>{posting ? "投稿中..." : previewTarget === "x" ? "X に投稿" : previewTarget === "instagram" ? "Instagram に投稿" : "Threads に投稿"}</Button>
               <Button size="sm" variant="ghost" onClick={handleGenerate} disabled={generating || limitReached}>再生成</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewImageUrl(null); setPreviewVideoUrl(null); }}>破棄</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setPreview(null); setEditText(""); setSplitReply(null); setEditReply(""); setPreviewMediaUrls([]); setPreviewImageUrl(null); }}>破棄</Button>
             </div>
           </CardContent>
         </Card>

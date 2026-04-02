@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const supabase = createServiceClient();
 
     const { data: linkCode, error: codeError } = await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .select("*")
       .eq("code", link_code.toUpperCase().trim())
       .eq("purpose", "philosophy")
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
     // 既存のアクティブコンセプトを非アクティブに
     await supabase
-      .from("philosophies")
+      .schema('post').from("philosophies")
       .update({ is_active: false })
       .eq("user_id", userId)
       .eq("is_active", true);
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
     // 新しいコンセプトを保存
     const { data, error } = await supabase
-      .from("philosophies")
+      .schema('post').from("philosophies")
       .insert({
         user_id: userId,
         title,
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 
     // コードを使用済みにする
     await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .update({ used: true })
       .eq("id", linkCode.id);
 

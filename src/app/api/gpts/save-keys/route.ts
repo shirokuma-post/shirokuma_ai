@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const supabase = createServiceClient();
 
     const { data: linkCode, error: codeError } = await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .select("*")
       .eq("code", link_code.toUpperCase().trim())
       .eq("purpose", "api_keys")
@@ -51,20 +51,39 @@ export async function POST(request: Request) {
         continue; // 不正なproviderはスキップ
       }
 
-      const { error } = await supabase
+      // 既存キーを検索（統合DBにupsert用ユニーク制約がないため手動で）
+      const { data: existing } = await supabase
         .from("api_keys")
-        .upsert(
-          {
+        .select("id")
+        .eq("user_id", userId)
+        .eq("product", "post")
+        .eq("provider", key.provider)
+        .eq("key_name", key.key_name)
+        .single();
+
+      let error;
+      if (existing) {
+        ({ error } = await supabase
+          .from("api_keys")
+          .update({
+            encrypted_value: encrypt(key.value),
+            is_valid: true,
+            last_verified_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id));
+      } else {
+        ({ error } = await supabase
+          .from("api_keys")
+          .insert({
             user_id: userId,
+            product: "post",
             provider: key.provider,
             key_name: key.key_name,
             encrypted_value: encrypt(key.value),
-            metadata: key.metadata || null,
             is_valid: true,
             last_verified_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,provider,key_name" }
-        );
+          }));
+      }
 
       if (!error) {
         savedKeys.push(`${key.provider}/${key.key_name}`);
@@ -73,7 +92,7 @@ export async function POST(request: Request) {
 
     // コードを使用済みにする
     await supabase
-      .from("gpts_link_codes")
+      .schema('post').from("gpts_link_codes")
       .update({ used: true })
       .eq("id", linkCode.id);
 

@@ -8,15 +8,23 @@ import { calculateCost, formatUsd, formatJpy, type CostInput } from "@/lib/cost-
 type Execution = { id: string; scheduled_time: string; status: string; error_message: string | null; sns_results: any; created_at: string };
 type UserPlan = "free" | "pro" | "business";
 
+type SlotTarget = "x" | "threads" | "instagram";
+
 interface Slot {
   time: string;
-  target: "x" | "threads" | "instagram";
+  target: SlotTarget;
   style: string;
   character: string;
   length: string;
   split: boolean;
   useTrend?: boolean;
   theme?: string;
+}
+
+// Instagram投稿サイクル設定
+interface IgCycleConfig {
+  enabled: boolean;
+  intervalDays: number; // N日に1回
 }
 
 const PLAN_MAX_SLOTS: Record<UserPlan, number> = { free: 3, pro: 10, business: -1 };
@@ -83,6 +91,8 @@ export default function SchedulePage() {
   const [userPlan, setUserPlan] = useState<UserPlan>("free");
   const [userSnsProvider, setUserSnsProvider] = useState<"x" | "threads" | "instagram" | null>(null);
   const [customStyles, setCustomStyles] = useState<{ id: string; name: string }[]>([]);
+  const [snsFilter, setSnsFilter] = useState<SlotTarget | "all">("all");
+  const [igCycle, setIgCycle] = useState<IgCycleConfig>({ enabled: false, intervalDays: 3 });
 
   useEffect(() => { fetchSchedule(); fetchPlan(); fetchStyleDefaults(); }, []);
 
@@ -131,6 +141,9 @@ export default function SchedulePage() {
           setTrendEnabled(data.config.trend_enabled ?? false);
           setTrendCategories(data.config.trend_categories ?? DEFAULT_TREND_CATEGORIES);
           setLocalArea(data.config.local_area ?? "");
+          if (data.config.ig_cycle) {
+            setIgCycle(data.config.ig_cycle);
+          }
           // 新形式 (slots) を優先、なければ旧形式から変換
           if (data.config.slots && data.config.slots.length > 0) {
             setSlots(data.config.slots);
@@ -163,7 +176,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories, local_area: localArea }),
+        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories, local_area: localArea, ig_cycle: igCycle }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
@@ -174,10 +187,22 @@ export default function SchedulePage() {
   }
 
   function addSlot() {
+    // フィルター中のSNSで追加、allなら既定SNS
+    const target: SlotTarget = snsFilter !== "all" ? snsFilter : (userSnsProvider || "x");
+
+    // Instagram: 1日1スロットまで
+    if (target === "instagram") {
+      const igCount = slots.filter(s => s.target === "instagram").length;
+      if (igCount >= 1) {
+        alert("Instagramは1日1投稿までです。サイクル設定で投稿間隔を調整してください。");
+        return;
+      }
+    }
+
     const newSlot: Slot = {
       ...defaultSlot,
-      target: userSnsProvider || "x",
-      length: userSnsProvider === "threads" ? "long" : "standard",
+      target,
+      length: target === "threads" ? "long" : "standard",
     };
     setSlots(prev => [...prev, newSlot]);
     setExpandedSlot(slots.length);
@@ -214,6 +239,21 @@ export default function SchedulePage() {
     return userSnsProvider === targetId;
   }
 
+  // Instagramスロットがあるか
+  const hasInstagramSlots = slots.some(s => s.target === "instagram");
+
+  // SNSごとのスロット数
+  const slotCountByTarget = {
+    x: slots.filter(s => s.target === "x").length,
+    threads: slots.filter(s => s.target === "threads").length,
+    instagram: slots.filter(s => s.target === "instagram").length,
+  };
+
+  // フィルター済みスロット（indexを保持）
+  const filteredSlots = slots
+    .map((slot, i) => ({ slot, originalIndex: i }))
+    .filter(({ slot }) => snsFilter === "all" || slot.target === snsFilter);
+
   // ---- コスト予測 ----
   const costInput: CostInput = {
     slots: slots.map(s => ({ length: s.length, split: s.split, style: s.style })),
@@ -231,6 +271,19 @@ export default function SchedulePage() {
         <p className="text-gray-500 mt-1">自動投稿スケジュールの管理</p>
       </div>
 
+      {/* Instagram画像必須バナー */}
+      {hasInstagramSlots && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 via-pink-50 to-purple-50 border border-pink-200 rounded-xl">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📸</span>
+            <div>
+              <p className="text-sm font-bold text-pink-900">Instagram投稿には画像が必須です</p>
+              <p className="text-xs text-pink-700 mt-0.5">ドラフト生成後、Posts画面で画像を添付してください。画像なしのInstagram投稿は失敗します。複数画像でカルーセル投稿も可能です。</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card className="mb-6">
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -247,13 +300,39 @@ export default function SchedulePage() {
               <label className="text-sm font-medium text-gray-700">投稿スロット<span className="ml-2 text-xs text-gray-400">{slots.length} / {maxSlots === -1 ? "∞" : maxSlots}枠</span></label>
             </div>
 
-            {slots.length === 0 && (
+            {/* SNSフィルタータブ */}
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+              <button
+                onClick={() => setSnsFilter("all")}
+                className={"px-3 py-1.5 rounded-md text-xs font-medium transition-colors " + (snsFilter === "all" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+              >すべて <span className="text-gray-400">{slots.length}</span></button>
+              {(canUseTarget("x") || slotCountByTarget.x > 0) && (
+                <button
+                  onClick={() => setSnsFilter("x")}
+                  className={"px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 " + (snsFilter === "x" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                ><span className="w-3 h-3 bg-black text-white rounded text-[8px] flex items-center justify-center font-bold">X</span> X <span className="text-gray-400">{slotCountByTarget.x}</span></button>
+              )}
+              {(canUseTarget("threads") || slotCountByTarget.threads > 0) && (
+                <button
+                  onClick={() => setSnsFilter("threads")}
+                  className={"px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 " + (snsFilter === "threads" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                ><span className="w-3 h-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded text-[8px]" /> Threads <span className="text-gray-400">{slotCountByTarget.threads}</span></button>
+              )}
+              {(canUseTarget("instagram") || slotCountByTarget.instagram > 0) && (
+                <button
+                  onClick={() => setSnsFilter("instagram")}
+                  className={"px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 " + (snsFilter === "instagram" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700")}
+                ><span className="w-3 h-3 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-600 rounded text-[8px]" /> Instagram <span className="text-gray-400">{slotCountByTarget.instagram}</span></button>
+              )}
+            </div>
+
+            {filteredSlots.length === 0 && (
               <div className="text-center py-6 text-gray-400">
-                <p className="text-sm">スロットがありません。下のボタンから追加してください。</p>
+                <p className="text-sm">{snsFilter === "all" ? "スロットがありません。下のボタンから追加してください。" : `${TARGETS.find(t => t.id === snsFilter)?.label || snsFilter}のスロットがありません。`}</p>
               </div>
             )}
 
-            {slots.map((slot, i) => {
+            {filteredSlots.map(({ slot, originalIndex: i }) => {
               const isExpanded = expandedSlot === i;
               const targetLabel = TARGETS.find(t => t.id === slot.target)?.label || "X";
               const styleLabel = STYLES.find(s => s.id === slot.style)?.label || "ミックス";
@@ -299,7 +378,15 @@ export default function SchedulePage() {
                             const locked = !canUseTarget(t.id);
                             return (
                               <button key={t.id}
-                                onClick={() => locked ? (window.location.href = "/pricing") : updateSlot(i, { target: t.id, ...(t.id !== "threads" ? { split: false } : {}) })}
+                                onClick={() => {
+                                  if (locked) { window.location.href = "/pricing"; return; }
+                                  // Instagram 1スロット制限
+                                  if (t.id === "instagram" && slot.target !== "instagram") {
+                                    const igCount = slots.filter(s => s.target === "instagram").length;
+                                    if (igCount >= 1) { alert("Instagramは1日1投稿までです。"); return; }
+                                  }
+                                  updateSlot(i, { target: t.id, ...(t.id !== "threads" ? { split: false } : {}) });
+                                }}
                                 className={"px-3 py-1.5 rounded-md text-xs font-medium border transition-colors " +
                                   (slot.target === t.id ? "border-brand-500 bg-brand-50 text-brand-700" :
                                     locked ? "border-gray-100 bg-white text-gray-400" :
@@ -382,8 +469,8 @@ export default function SchedulePage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">分割投稿</label>
-                          {slot.target === "x" ? (
-                            <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">X API制限により不可</span>
+                          {slot.target !== "threads" ? (
+                            <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">{slot.target === "x" ? "X" : "Instagram"} API制限により不可</span>
                           ) : (
                             <button
                               onClick={() => canUseSplit ? updateSlot(i, { split: !slot.split }) : (window.location.href = "/pricing")}
@@ -500,6 +587,41 @@ export default function SchedulePage() {
                   {localArea && <span className="text-xs text-blue-600">「{localArea}」の地域ニュースを取得します</span>}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">設定した地域のニュースを投稿ネタとして参照します（空欄でOFF）</p>
+              </div>
+            )}
+
+            {/* Instagram サイクル設定 (Business限定・Instagramスロットがある場合) */}
+            {hasInstagramSlots && planLevel(userPlan) >= 2 && (
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Instagram 投稿サイクル</p>
+                  <p className="text-xs text-gray-400">N日に1回のペースでInstagram投稿（毎日投稿しない場合に設定）</p>
+                </div>
+                <button onClick={() => setIgCycle(prev => ({ ...prev, enabled: !prev.enabled }))} className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (igCycle.enabled ? "bg-pink-500" : "bg-gray-200")}>
+                  <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (igCycle.enabled ? "translate-x-6" : "translate-x-1")} />
+                </button>
+              </div>
+            )}
+            {hasInstagramSlots && igCycle.enabled && planLevel(userPlan) >= 2 && (
+              <div className="pl-2 border-l-2 border-pink-200">
+                <p className="text-xs font-medium text-gray-600 mb-2">投稿間隔</p>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={igCycle.intervalDays}
+                    onChange={(e) => setIgCycle(prev => ({ ...prev, intervalDays: parseInt(e.target.value) }))}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-pink-500 focus:border-pink-500"
+                  >
+                    <option value={2}>2日に1回</option>
+                    <option value={3}>3日に1回</option>
+                    <option value={4}>4日に1回</option>
+                    <option value={5}>5日に1回</option>
+                    <option value={7}>週1回</option>
+                  </select>
+                  <span className="text-xs text-pink-600">
+                    月 約{Math.floor(30 / igCycle.intervalDays)}回投稿
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">スケジュール開始日から数えてN日ごとにInstagram投稿を生成します。非投稿日はInstagramスロットがスキップされます。</p>
               </div>
             )}
 

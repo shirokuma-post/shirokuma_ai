@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const statusFilter = url.searchParams.get("status");
 
     let query = supabase
-      .from("posts")
+      .schema('post').from("posts")
       .select("*", { count: "exact" })
       .eq("user_id", user.id);
 
@@ -59,7 +59,7 @@ export async function DELETE(request: Request) {
     }
 
     const { error } = await supabase
-      .from("posts")
+      .schema('post').from("posts")
       .delete()
       .eq("id", id)
       .eq("user_id", user.id);

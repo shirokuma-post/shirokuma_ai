@@ -9,7 +9,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data: posts, error, count } = await supabase
-      .from("learning_posts")
+      .schema('post').from("learning_posts")
       .select("*", { count: "exact" })
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -29,8 +29,8 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     // Check plan (Pro以上のみ)
-    const { data: profile } = await supabase.from("profiles").select("plan").eq("id", user.id).single();
-    if (!profile || profile.plan === "free") {
+    const { data: profile } = await supabase.from("profiles").select("post_plan").eq("id", user.id).single();
+    if (!profile || profile.post_plan === "free") {
       return NextResponse.json({ error: "この機能はProプラン以上で利用できます" }, { status: 403 });
     }
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     // 他者投稿はBusinessプラン限定
     const isOthers = sourceType === "others";
-    if (isOthers && profile.plan !== "business") {
+    if (isOthers && profile.post_plan !== "business") {
       return NextResponse.json({ error: "他者投稿の学習はBusinessプランで利用できます" }, { status: 403 });
     }
 
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     }
 
     const { data, error } = await supabase
-      .from("learning_posts")
+      .schema('post').from("learning_posts")
       .insert({
         user_id: user.id,
         content: content.trim(),
@@ -91,14 +91,14 @@ export async function DELETE(request: Request) {
 
     if (ids && Array.isArray(ids) && ids.length > 0) {
       // 一括削除
-      const { error } = await supabase.from("learning_posts").delete().in("id", ids).eq("user_id", user.id);
+      const { error } = await supabase.schema('post').from("learning_posts").delete().in("id", ids).eq("user_id", user.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ success: true, deleted: ids.length });
     }
 
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
-    const { error } = await supabase.from("learning_posts").delete().eq("id", id).eq("user_id", user.id);
+    const { error } = await supabase.schema('post').from("learning_posts").delete().eq("id", id).eq("user_id", user.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true });
   } catch (error: any) {

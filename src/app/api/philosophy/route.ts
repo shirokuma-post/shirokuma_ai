@@ -11,7 +11,7 @@ export async function GET() {
   }
 
   const { data, error } = await supabase
-    .from("philosophies")
+    .schema('post').from("philosophies")
     .select("*")
     .eq("user_id", user.id)
     .eq("is_active", true)
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
   // 新規保存（先にinsertして成功を確認してから旧レコードを無効化）
   const { data, error } = await supabase
-    .from("philosophies")
+    .schema('post').from("philosophies")
     .insert({
       user_id: user.id,
       title,
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   // insert成功後に旧アクティブを無効化（新レコード自身は除外）
   await supabase
-    .from("philosophies")
+    .schema('post').from("philosophies")
     .update({ is_active: false })
     .eq("user_id", user.id)
     .eq("is_active", true)
