@@ -31,7 +31,6 @@ export function getInstagramAuthUrl(state: string): string {
   const scopes = [
     "instagram_basic",
     "instagram_content_publish",
-    "instagram_manage_comments",
     "pages_show_list",
     "pages_read_engagement",
   ].join(",");
