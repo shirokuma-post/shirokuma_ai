@@ -102,6 +102,10 @@ export default function PostsPage() {
   const [imageModal, setImageModal] = useState<string | null>(null);
   const [generatingCaption, setGeneratingCaption] = useState<string | null>(null);
 
+  // 単発生成: テーマ & トレンド
+  const [theme, setTheme] = useState("");
+  const [useTrend, setUseTrend] = useState(false);
+
   // 承認待ち (legacy support)
   const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
   const [showPending, setShowPending] = useState(false);
@@ -426,7 +430,7 @@ export default function PostsPage() {
     try {
       const res = await fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ style, postLength: splitMode ? "standard" : postLength, splitMode, snsTarget: snsTab, voiceProfile }),
+        body: JSON.stringify({ style, postLength: splitMode ? "standard" : postLength, splitMode, snsTarget: snsTab, voiceProfile, theme: theme.trim() || undefined, useTrend }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -985,6 +989,30 @@ export default function PostsPage() {
                   <span className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-100 bg-gray-50 text-gray-300">{isX ? "X" : "Instagram"} API制限により不可</span>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Theme + Trend */}
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">テーマ指定 <span className="text-gray-300">（任意）</span></label>
+              <input
+                type="text"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                placeholder="例: 朝の習慣、完璧主義の罠、子育ての本音"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setUseTrend(!useTrend)}
+                className={"relative inline-flex h-5 w-9 items-center rounded-full transition-colors " + (useTrend ? "bg-brand-500" : "bg-gray-200")}
+              >
+                <span className={"inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform " + (useTrend ? "translate-x-4" : "translate-x-0.5")} />
+              </button>
+              <span className="text-xs text-gray-600">トレンドを反映</span>
+              {useTrend && <span className="text-xs text-brand-500">今日のトレンドを投稿に織り込みます</span>}
             </div>
           </div>
 

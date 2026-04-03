@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   fetchUserGenerationContext,
+  fetchTrendContext,
   callAI,
   buildFullSystemPrompt,
   parseGeneratedContent,
@@ -43,12 +44,16 @@ export async function POST(request: Request) {
       splitMode = false,
       snsTarget = "x",
       voiceProfile: requestVoiceProfile,
+      theme,
+      useTrend = false,
     } = body as {
       style?: PostStyle;
       postLength?: PostLength;
       splitMode?: boolean;
       snsTarget?: SnsTarget;
       voiceProfile?: VoiceProfile;
+      theme?: string;
+      useTrend?: boolean;
     };
 
     // 3. ユーザーの生成コンテキストを一括取得
@@ -72,17 +77,23 @@ export async function POST(request: Request) {
 
     // 4. プロンプト生成
     const { system, user } = splitMode
-      ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay: getTimeOfDayNow(), voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt })
-      : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay: getTimeOfDayNow(), postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt });
+      ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay: getTimeOfDayNow(), voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, customStylePrompt, targetProfile: ctx.targetProfile })
+      : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay: getTimeOfDayNow(), postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, customStylePrompt, targetProfile: ctx.targetProfile });
 
-    // 5. 学習データ補助付加
-    const systemFull = buildFullSystemPrompt(system, style, style !== "ai_optimized" ? ctx.learningContext : "", "");
+    // 5. トレンド取得（必要な場合のみ）
+    const trendContext = useTrend ? await fetchTrendContext(supabase, ["general", "technology", "business"], authUser.id) : "";
 
-    // 6. AI生成
+    // 6. テーマ指定
+    const themeContext = theme ? `\n\n【テーマ指定】今回の投稿テーマ: 「${theme}」\nこのテーマに沿った内容を生成してください。ただし無理にテーマを押し出さず、自然な投稿に仕上げること。` : "";
+
+    // 7. 学習データ + トレンド + テーマ付加
+    const systemFull = buildFullSystemPrompt(system, style, style !== "ai_optimized" ? ctx.learningContext : "", trendContext) + themeContext;
+
+    // 8. AI生成
     const maxTokens = splitMode ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
     const rawContent = await callAI(ctx.provider, ctx.decryptedKey, systemFull, user, maxTokens);
 
-    // 7. レスポンス
+    // 9. レスポンス
     if (splitMode) {
       const splitResult = parseSplitPost(rawContent);
       if (!splitResult) {
