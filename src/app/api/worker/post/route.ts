@@ -247,15 +247,16 @@ async function postDraft(supabase: any, postId: string, userId: string): Promise
 
   const draft = claimed;
 
-  // 時間ウィンドウガード: scheduled_at から30分以内のみ投稿
+  // 時間ウィンドウガード: scheduled_at から60分以内のみ投稿
+  // QStash遅延やcron/postの10分間隔を考慮して余裕を持たせる
   const scheduledMs = new Date(draft.scheduled_at).getTime();
   const nowMs = Date.now();
   const diffMinutes = (nowMs - scheduledMs) / 60_000;
-  if (diffMinutes > 30) {
+  if (diffMinutes > 60) {
     console.log(`[WORKER] Skipping ${postId}: ${Math.round(diffMinutes)}min past scheduled time (${draft.scheduled_at})`);
     await supabase.schema('post').from("posts").update({
-      status: "failed",
-      error_message: `投稿時間を${Math.round(diffMinutes)}分超過（スキップ）`,
+      status: "draft",
+      error_message: `投稿時間を${Math.round(diffMinutes)}分超過 — 次回のcronで再試行可能`,
     }).eq("id", postId);
     return "skipped";
   }

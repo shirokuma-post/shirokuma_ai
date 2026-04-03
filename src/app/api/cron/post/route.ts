@@ -49,14 +49,13 @@ async function handler(request: Request) {
     }
 
     // 2. Filter drafts: scheduled_at が現在時刻の -4分 ～ +15分 の範囲内のみ
-    //    過去15分超のドラフトは一斉投稿を防ぐためスキップ
+    //    10分間隔のcronで動くため、15分あれば漏れなくカバーできる
     const nowMs = now.getTime();
     const dueDrafts = drafts.filter((draft: any) => {
       if (!draft.scheduled_at) return false;
       const scheduledMs = new Date(draft.scheduled_at).getTime();
       const diffMin = (nowMs - scheduledMs) / 60_000;
-      // 予定時刻の4分前〜30分後の範囲のみ対象
-      return diffMin >= -4 && diffMin <= 30;
+      return diffMin >= -4 && diffMin <= 15;
     });
 
     if (dueDrafts.length === 0) {
