@@ -23,7 +23,7 @@ export function getThreadsAuthUrl(state: string): string {
     "threads_read_replies",
   ].join(",");
 
-  return `https://threads.net/oauth/authorize?client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&scope=${scopes}&response_type=code&state=${state}`;
+  return `https://www.threads.net/oauth/authorize?client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&scope=${scopes}&response_type=code&state=${state}`;
 }
 
 export function getInstagramAuthUrl(state: string): string {

@@ -39,5 +39,6 @@ export async function GET(request: Request) {
     authUrl = getThreadsAuthUrl(state);
   }
 
+  console.log(`[META-AUTH] provider=${provider}, META_APP_ID=${process.env.META_APP_ID?.slice(0, 4)}..., authUrl=${authUrl.slice(0, 100)}...`);
   return NextResponse.json({ url: authUrl });
 }
