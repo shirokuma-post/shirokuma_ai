@@ -106,10 +106,6 @@ export default function PostsPage() {
   const [theme, setTheme] = useState("");
   const [useTrend, setUseTrend] = useState(false);
 
-  // 承認待ち (legacy support)
-  const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
-  const [showPending, setShowPending] = useState(false);
-  const [approving, setApproving] = useState<string | null>(null);
 
   const fetchPosts = useCallback(async (p: number = 1) => {
     try { const res = await fetch("/api/posts?page=" + p + "&limit=10"); if (res.ok) { const data = await res.json(); setPosts(data.posts); setTotalPosts(data.total); setTotalPages(data.totalPages); setPage(p); } } catch (e) { console.error(e); } finally { setLoading(false); }
@@ -160,26 +156,7 @@ export default function PostsPage() {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchPosts(1); fetchStats(); fetchStyleDefaults(); fetchPendingPosts(); fetchTodayDrafts(); }, [fetchPosts, fetchStats, fetchTodayDrafts]);
-
-  async function fetchPendingPosts() {
-    try {
-      const res = await fetch("/api/posts?status=pending_approval&limit=50");
-      if (res.ok) { const data = await res.json(); setPendingPosts(data.posts || []); }
-    } catch {}
-  }
-
-  async function handleApprove(postId: string, action: "approve" | "redo") {
-    setApproving(postId);
-    try {
-      const res = await fetch("/api/posts/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId, action }),
-      });
-      if (res.ok) { fetchPendingPosts(); if (action === "approve") fetchPosts(1); }
-    } catch {} finally { setApproving(null); }
-  }
+  useEffect(() => { fetchPosts(1); fetchStats(); fetchStyleDefaults(); fetchTodayDrafts(); }, [fetchPosts, fetchStats, fetchTodayDrafts]);
 
   async function fetchStyleDefaults() {
     try {
@@ -1096,54 +1073,6 @@ export default function PostsPage() {
         </Card>
       )}
 
-      {/* 承認待ち (legacy) */}
-      {pendingPosts.length > 0 && (
-        <Card className="mb-6 border-amber-200">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-amber-800">承認待ち</h2>
-                <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">{pendingPosts.length}件</span>
-              </div>
-              <button onClick={() => setShowPending(!showPending)} className="text-xs text-amber-600 hover:text-amber-700">{showPending ? "閉じる" : "表示"}</button>
-            </div>
-          </CardHeader>
-          {showPending && (
-            <CardContent>
-              <div className="space-y-3">
-                {pendingPosts.map((post) => (
-                  <div key={post.id} className="border border-amber-100 rounded-lg p-4 bg-amber-50/50">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">{getStatusBadge(post.status)}{post.style_used && <span className="text-xs text-gray-400">{STYLE_LABELS[post.style_used] || post.style_used}</span>}</div>
-                      <span className="text-xs text-gray-400">{formatDate(post.created_at)}</span>
-                    </div>
-                    {(() => {
-                      const pendParts = (post.content || "").split("\n\n---\n\n");
-                      return pendParts.length > 1 ? (
-                        <div className="mb-3">
-                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{pendParts[0]}</p>
-                          <div className="flex items-center gap-2 my-1.5">
-                            <div className="h-px flex-1 bg-purple-200" />
-                            <span className="text-xs text-purple-500">↳ リプライ</span>
-                            <div className="h-px flex-1 bg-purple-200" />
-                          </div>
-                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{pendParts[1]}</p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed mb-3">{post.content}</p>
-                      );
-                    })()}
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => handleApprove(post.id, "approve")} disabled={approving === post.id}>{approving === post.id ? "処理中..." : "承認して投稿"}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleApprove(post.id, "redo")} disabled={approving === post.id}>再生成（削除）</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-      )}
 
       {/* History */}
       <Card>

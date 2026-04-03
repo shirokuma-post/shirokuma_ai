@@ -76,7 +76,7 @@ const INITIAL_DEFAULT_SLOT: Slot = { time: "12:00", target: "x", style: "mix", c
 
 export default function SchedulePage() {
   const [enabled, setEnabled] = useState(false);
-  const [requireApproval, setRequireApproval] = useState(false);
+  const [skipConfirmation, setSkipConfirmation] = useState(false);
   const [trendEnabled, setTrendEnabled] = useState(false);
   const [trendCategories, setTrendCategories] = useState<string[]>(DEFAULT_TREND_CATEGORIES);
   const [localArea, setLocalArea] = useState("");
@@ -137,7 +137,7 @@ export default function SchedulePage() {
         const data = await res.json();
         if (data.config) {
           setEnabled(data.config.enabled);
-          setRequireApproval(data.config.require_approval ?? false);
+          setSkipConfirmation(data.config.skip_confirmation ?? false);
           setTrendEnabled(data.config.trend_enabled ?? false);
           setTrendCategories(data.config.trend_categories ?? DEFAULT_TREND_CATEGORIES);
           setLocalArea(data.config.local_area ?? "");
@@ -176,7 +176,7 @@ export default function SchedulePage() {
       const res = await fetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, slots: sorted, require_approval: requireApproval, trend_enabled: trendEnabled, trend_categories: trendCategories, local_area: localArea, ig_cycle: igCycle }),
+        body: JSON.stringify({ enabled, slots: sorted, skip_confirmation: skipConfirmation, trend_enabled: trendEnabled, trend_categories: trendCategories, local_area: localArea, ig_cycle: igCycle }),
       });
       if (res.ok) setSaved(true);
     } catch {} finally { setSaving(false); setTimeout(() => setSaved(false), 3000); }
@@ -513,14 +513,14 @@ export default function SchedulePage() {
               <a href="/pricing" className="block w-full py-2.5 border border-dashed border-amber-300 rounded-lg text-sm text-center text-amber-600 hover:bg-amber-50">🔒 アップグレードでスロット追加 →</a>
             )}
 
-            {/* 承認ワークフロー トグル */}
+            {/* 確認スキップ（自動登録） トグル */}
             <div className="flex items-center justify-between pt-3 border-t border-gray-100">
               <div>
-                <p className="text-sm font-medium text-gray-700">承認ワークフロー</p>
-                <p className="text-xs text-gray-400">ONにすると自動投稿前に承認が必要になります</p>
+                <p className="text-sm font-medium text-gray-700">確認スキップ</p>
+                <p className="text-xs text-gray-400">ONにすると生成後すぐ自動投稿（朝の確認・登録が不要に）</p>
               </div>
-              <button onClick={() => setRequireApproval(!requireApproval)} className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (requireApproval ? "bg-amber-500" : "bg-gray-200")}>
-                <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (requireApproval ? "translate-x-6" : "translate-x-1")} />
+              <button onClick={() => setSkipConfirmation(!skipConfirmation)} className={"relative inline-flex h-6 w-11 items-center rounded-full transition-colors " + (skipConfirmation ? "bg-brand-500" : "bg-gray-200")}>
+                <span className={"inline-block h-4 w-4 transform rounded-full bg-white transition-transform " + (skipConfirmation ? "translate-x-6" : "translate-x-1")} />
               </button>
             </div>
 

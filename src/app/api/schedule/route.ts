@@ -34,10 +34,10 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { enabled, slots, require_approval, trend_enabled, trend_categories, local_area, ig_cycle } = body as {
+    const { enabled, slots, skip_confirmation, trend_enabled, trend_categories, local_area, ig_cycle } = body as {
       enabled: boolean;
       slots: ScheduleSlot[];
-      require_approval?: boolean;
+      skip_confirmation?: boolean;
       trend_enabled?: boolean;
       trend_categories?: string[];
       local_area?: string;
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       .upsert({
         user_id: user.id,
         enabled: enabled ?? false,
-        require_approval: require_approval ?? false,
+        skip_confirmation: skip_confirmation ?? false,
         trend_enabled: trend_enabled ?? false,
         trend_categories: trend_categories ?? ["general", "technology", "business"],
         local_area: local_area || null,

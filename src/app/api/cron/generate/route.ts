@@ -59,6 +59,7 @@ async function handler(request: Request) {
         chunk.map(async (config) => {
           let slots: ScheduleSlot[] = (config.slots as ScheduleSlot[]) || [];
           const userId = config.user_id;
+          const skipConfirmation = config.skip_confirmation === true;
           const trendCategories: string[] = (config.trend_categories as string[]) ?? ["general", "technology", "business"];
 
           // Instagram サイクルチェック: 非投稿日はInstagramスロットを除外
@@ -88,10 +89,12 @@ async function handler(request: Request) {
             .gte("scheduled_at", todayStr + "T00:00:00+09:00")
             .lte("scheduled_at", todayStr + "T23:59:59+09:00");
 
-          const postIds = await generateDraftsForUser(supabase, userId, slots, trendCategories, todayStr);
+          const postIds = await generateDraftsForUser(supabase, userId, slots, trendCategories, todayStr, skipConfirmation);
 
-          // QStash遅延投稿をスケジュール
-          await scheduleQStashPosts(postIds, userId);
+          // 確認スキップONの場合のみQStashスケジュール（OFFはユーザーが手動登録）
+          if (skipConfirmation) {
+            await scheduleQStashPosts(postIds, userId);
+          }
 
           console.log(`[BATCH-GENERATE] Generated ${postIds.length} drafts for user ${userId}`);
           return { userId, count: postIds.length };
@@ -162,6 +165,7 @@ async function generateDraftsForUser(
   slots: ScheduleSlot[],
   trendCategories: string[],
   todayStr: string,
+  skipConfirmation: boolean = false,
 ): Promise<{ id: string; scheduledAt: string; userId: string }[]> {
   // 共通コンテキスト一括取得
   const ctx = await fetchUserGenerationContext(supabase, userId);
@@ -210,7 +214,7 @@ async function generateDraftsForUser(
           scheduled_at: scheduledAt,
           ai_model_used: ctx.provider,
           sns_target: slot.target,
-          auto_post: true,
+          auto_post: skipConfirmation,
           slot_index: originalIndex,
           slot_config: slot,
         }).select("id").single();

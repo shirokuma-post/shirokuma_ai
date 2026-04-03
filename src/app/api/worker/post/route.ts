@@ -173,30 +173,6 @@ async function processSlot(
 
   const savedContent = replyText ? hookText + "\n\n---\n\n" + replyText : hookText;
 
-  // 承認ワークフロー
-  if (requireApproval) {
-    const { data: post } = await supabase
-      .schema('post').from("posts")
-      .insert({
-        user_id: userId,
-        content: savedContent,
-        style_used: style,
-        status: "pending_approval",
-        ai_model_used: ctx.provider,
-      })
-      .select()
-      .single();
-
-    await supabase.schema('post').from("schedule_executions").insert({
-      user_id: userId,
-      scheduled_time: slot.time,
-      status: "success",
-      post_id: post?.id,
-      sns_results: { approval_pending: true },
-    });
-    console.log(`[WORKER] Pending approval for user ${userId} at ${slot.time}`);
-    return;
-  }
 
   // Instagram: Business プランのみ
   if (snsTarget === "instagram" && plan !== "business") {
