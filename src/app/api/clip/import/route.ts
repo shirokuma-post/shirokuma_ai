@@ -2,6 +2,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { isUrlSafe } from "@/lib/url-validation";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { timingSafeEqual } from "crypto";
 
 /**
  * POST /api/clip/import
@@ -28,9 +29,20 @@ export async function POST(request: Request) {
     const clipSecret = request.headers.get("x-clip-secret");
 
     if (clipSecret) {
-      // サーバー間認証: CLIP_SHARED_SECRET で検証
+      // サーバー間認証: CLIP_SHARED_SECRET で検証（タイミングセーフ比較）
       const expected = process.env.CLIP_SHARED_SECRET;
-      if (!expected || clipSecret !== expected) {
+      if (!expected || clipSecret.length !== expected.length) {
+        return NextResponse.json({ error: "Invalid clip secret" }, { status: 401 });
+      }
+      try {
+        const isValid = timingSafeEqual(
+          Buffer.from(clipSecret, "utf8"),
+          Buffer.from(expected, "utf8"),
+        );
+        if (!isValid) {
+          return NextResponse.json({ error: "Invalid clip secret" }, { status: 401 });
+        }
+      } catch {
         return NextResponse.json({ error: "Invalid clip secret" }, { status: 401 });
       }
       if (!bodyUserId) {

@@ -19,6 +19,7 @@ import {
 import type { PostStyle, Philosophy } from "@/types/database";
 import { buildLearningContext } from "@/lib/ai/learning-context";
 import { decrypt } from "@/lib/crypto";
+import { fetchTargetProfile, type TargetProfileResponse } from "@/lib/target/integration";
 
 // =====================================================
 // 共通型定義
@@ -48,6 +49,8 @@ export interface UserGenerationContext {
   recentPostTitles: string[];
   voiceProfile?: VoiceProfile;
   customStyleDefs: { id: string; prompt: string }[];
+  /** Target連携: ターゲットプロファイル（n=1, LF8, 訴求ワード） */
+  targetProfile?: TargetProfileResponse | null;
 }
 
 // =====================================================
@@ -147,6 +150,17 @@ export async function fetchUserGenerationContext(
     console.warn("[generation] Failed to fetch voice profile:", err);
   }
 
+  // 6. Target連携: ターゲットプロファイル取得（失敗しても投稿生成は続行）
+  let targetProfile: TargetProfileResponse | null = null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      targetProfile = await fetchTargetProfile(session.access_token);
+    }
+  } catch (err) {
+    console.warn("[generation] Failed to fetch target profile:", err);
+  }
+
   return {
     philosophy,
     provider,
@@ -156,6 +170,7 @@ export async function fetchUserGenerationContext(
     recentPostTitles,
     voiceProfile,
     customStyleDefs,
+    targetProfile,
   };
 }
 

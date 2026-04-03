@@ -187,8 +187,8 @@ async function generateDraftsForUser(
 
     try {
       const { system } = isSplit
-        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt })
-        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt });
+        ? buildSplitPrompt({ philosophy: ctx.philosophy, style, timeOfDay, voiceProfile: ctx.voiceProfile, snsTarget, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt, targetProfile: ctx.targetProfile })
+        : buildPrompt({ philosophy: ctx.philosophy, style, timeOfDay, postLength, voiceProfile: ctx.voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? ctx.learningContext : undefined, recentPosts: ctx.recentPostContents, recentTitles: ctx.recentPostTitles, customStylePrompt, targetProfile: ctx.targetProfile });
 
       const slotUsesTrend = refSlot.useTrend === true;
       const themeContext = refSlot.theme ? `\n\n【テーマ指定】今回の投稿テーマ: 「${refSlot.theme}」\nこのテーマに沿った内容を生成してください。ただし無理にテーマを押し出さず、自然な投稿に仕上げること。` : "";

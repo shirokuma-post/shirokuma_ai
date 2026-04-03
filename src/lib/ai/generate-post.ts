@@ -1,4 +1,6 @@
 import type { PostStyle, Philosophy } from "@/types/database";
+import type { TargetProfileResponse } from "@/lib/target/integration";
+import { buildTargetPromptSection } from "@/lib/target/integration";
 
 // =====================================================
 // スタイル定義（既存4 + 新規4）
@@ -554,6 +556,8 @@ interface GenerateOptions {
   recentPosts?: string[];
   recentTitles?: string[];
   customStylePrompt?: string;
+  /** Target連携: ターゲットプロファイル（n=1, LF8, 訴求ワード） */
+  targetProfile?: TargetProfileResponse | null;
 }
 
 // 方言指示はbuildVoicePromptに統合済み。個別のリマインダーは不要。
@@ -596,6 +600,7 @@ ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
 === 4. この人の想い（投稿の核。ここから全てが始まる）===
 ${philosophyContext}
+${options.targetProfile ? buildTargetPromptSection(options.targetProfile) : ""}
 
 === 5. 文体ルール ===
 ${WRITING_GUIDE}
@@ -648,6 +653,7 @@ ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
 === 4. この人の想い（投稿の核。ここから全てが始まる）===
 ${philosophyContext}
+${options.targetProfile ? buildTargetPromptSection(options.targetProfile) : ""}
 
 === 5. 文体ルール ===
 ${WRITING_GUIDE}
@@ -719,6 +725,7 @@ ${snsTarget ? `プラットフォーム: ${SNS_CONTEXT[snsTarget]}` : ""}
 
 === 5. この人の想い（投稿の核。ここから全てが始まる）===
 ${philosophyContext}
+${options.targetProfile ? buildTargetPromptSection(options.targetProfile) : ""}
 
 === 6. 文体ルール ===
 ${WRITING_GUIDE}

@@ -163,9 +163,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     } catch {}
 
+    // Target連携: プロファイル取得（失敗しても続行）
+    let targetProfile = null;
+    try {
+      const { fetchTargetProfile: fetchTP } = await import("@/lib/target/integration");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) targetProfile = await fetchTP(session.access_token);
+    } catch {}
+
     const { system, user: userPrompt } = isSplit
-      ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt })
-      : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt });
+      ? buildSplitPrompt({ philosophy, style, timeOfDay, voiceProfile, snsTarget, recentPosts: recentPostContents, customStylePrompt, targetProfile })
+      : buildPrompt({ philosophy, style, timeOfDay, postLength, voiceProfile, snsTarget, learningContext: style === "ai_optimized" ? learningContext : undefined, recentPosts: recentPostContents, customStylePrompt, targetProfile });
 
     const systemFull = system + (style !== "ai_optimized" && learningContext ? "\n\n" + learningContext : "");
     const maxTokens = isSplit ? 800 : (LENGTH_CONFIGS[postLength]?.maxTokens || 300);
