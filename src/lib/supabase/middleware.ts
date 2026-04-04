@@ -42,7 +42,9 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && pathname.startsWith("/auth")) {
+  // ※ update-password はパスワードリセットリンク経由でセッション復元後にアクセスするため除外
+  // ※ callback はOAuth/メール確認のコールバックなので除外
+  if (user && pathname.startsWith("/auth") && !pathname.startsWith("/auth/update-password") && !pathname.startsWith("/auth/callback")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

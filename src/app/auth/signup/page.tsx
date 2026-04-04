@@ -2,33 +2,48 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
+  const [success, setSuccess] = useState(false);
 
   const supabase = createClient();
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithPassword({
+    if (password.length < 6) {
+      setError("パスワードは6文字以上で入力してください");
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("パスワードが一致しません");
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
 
     if (error) {
       setError(error.message);
     } else {
-      router.push("/dashboard");
+      setSuccess(true);
     }
     setLoading(false);
   }
@@ -42,17 +57,37 @@ export default function LoginPage() {
     });
   }
 
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
+            <div className="text-4xl mb-4">📧</div>
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">確認メールを送信しました</h1>
+            <p className="text-sm text-gray-500 mb-6">
+              <span className="font-medium text-gray-700">{email}</span> に確認メールを送りました。<br />
+              メール内のリンクをクリックして登録を完了してください。
+            </p>
+            <Link href="/auth/login" className="text-sm text-brand-600 hover:text-brand-700 font-medium">
+              ログインページに戻る →
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
-            <Image src="/shirokuma-hero.png" alt="SHIROKUMA Post — AI Post Generation & Scheduling" width={400} height={218} className="mx-auto mb-2" priority />
+            <Image src="/shirokuma-hero.png" alt="SHIROKUMA Post" width={400} height={218} className="mx-auto mb-2" priority />
           </Link>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <h1 className="text-xl font-semibold text-gray-900 text-center mb-6">ログイン</h1>
+          <h1 className="text-xl font-semibold text-gray-900 text-center mb-6">新規登録</h1>
 
           <button
             onClick={handleGoogleLogin}
@@ -64,7 +99,7 @@ export default function LoginPage() {
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
             </svg>
-            Googleでログイン
+            Googleで登録
           </button>
 
           <div className="relative mb-6">
@@ -76,7 +111,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleSignup}>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">メールアドレス</label>
             <input
               type="email"
@@ -86,15 +121,22 @@ export default function LoginPage() {
               required
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent mb-3"
             />
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-sm font-medium text-gray-700">パスワード</label>
-              <Link href="/auth/reset-password" className="text-xs text-brand-600 hover:text-brand-700">パスワードをお忘れですか？</Link>
-            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">パスワード</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="password"
+              placeholder="6文字以上"
+              required
+              minLength={6}
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent mb-3"
+            />
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">パスワード確認</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="もう一度入力"
               required
               className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent mb-4"
             />
@@ -104,13 +146,13 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full px-4 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
             >
-              {loading ? "ログイン中..." : "ログイン"}
+              {loading ? "登録中..." : "メールで登録"}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-6">
-            アカウントをお持ちでないですか？{" "}
-            <Link href="/auth/signup" className="text-brand-600 hover:text-brand-700 font-medium">新規登録</Link>
+            すでにアカウントをお持ちですか？{" "}
+            <Link href="/auth/login" className="text-brand-600 hover:text-brand-700 font-medium">ログイン</Link>
           </p>
         </div>
       </div>
