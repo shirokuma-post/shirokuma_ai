@@ -38,7 +38,11 @@ async function handler(request: Request) {
       .select("*")
       .eq("enabled", true);
 
-    if (configError || !configs?.length) {
+    if (configError) {
+      console.error("[BATCH-GENERATE] Config fetch error:", configError);
+      return NextResponse.json({ error: configError.message }, { status: 500 });
+    }
+    if (!configs?.length) {
       return NextResponse.json({ message: "No active schedules", generated: 0 });
     }
 

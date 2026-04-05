@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 // テスト用: プラン切り替えAPI（管理者メールのみ許可）
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "aburi1000@gmail.com").split(",").map(e => e.trim()).filter(Boolean);
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
 
 export async function POST(request: Request) {
   try {

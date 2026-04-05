@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { PlanSwitcher } from "./plan-switcher";
 
-// 管理者メールのみ表示
-const ADMIN_EMAILS = ["aburi1000@gmail.com"];
+// 管理者メールのみ表示（環境変数から取得）
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "").split(",").map(e => e.trim()).filter(Boolean);
 
 export function PlanSwitcherWrapper() {
   const [plan, setPlan] = useState<string | null>(null);
